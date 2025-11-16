@@ -47,8 +47,9 @@ DEFAULT_CONFIG = {
     "box_restitution": 0.1,
     "dome_light_intensity": 600.0,
     "marker_radius": 0.3,
+    "goal_hemisphere_diameter": 1.0,  # Diameter of hemisphere at goal point (meters)
     
-    # Randomizable parameters
+    # Randomizable parameters (will be set by randomization function)
     "start_position": [4.0, 4.0],
     "goal_position": [-4.0, -4.0],
     "box_position": [2.0, 0.0, 0.25],
@@ -58,10 +59,10 @@ DEFAULT_CONFIG = {
     "robot_height": 0.65,
     
     # Randomization settings
-    "randomize": False,
-    "start_pos_range": [[-4.5, 4.5], [-4.5, 4.5]],
-    "goal_pos_range": [[-4.5, 4.5], [-4.5, 4.5]],
-    "box_pos_range": [[-3.0, 3.0], [-3.0, 3.0]],
+    "randomize": True,  # Enable randomization by default
+    "wall_inset": 1.0,  # Inset from walls for spawning (meters)
+    "box_line_distance_min": 2.0,  # Minimum distance from start-goal line (meters)
+    "box_line_distance_max": 3.0,  # Maximum distance from start-goal line (meters)
     "box_scale_range": [[0.5, 2.0], [0.5, 2.0], [0.3, 1.0]],
     "box_mass_range": [3.0, 10.0],
     
@@ -114,6 +115,7 @@ class SpotSimulation:
         self.logging_counter = 0        # Counter for logging updates (10Hz)
         self.start_pos = None           # Start position [x, y]
         self.goal_pos = None            # Goal position [x, y]
+        self.robot_camera_path = None   # Path to robot ego-view camera
 
     def _setup_logging(self):
         """
@@ -173,44 +175,112 @@ class SpotSimulation:
     def _apply_randomization(self):
         """
         Apply randomization to environment parameters if enabled.
-        Randomizes start/goal positions, box position/scale/mass within specified ranges.
+        Randomizes start/goal positions and box position with constraints:
+        - All points inside walls with inset
+        - Start and goal have at least 2/3 of map diagonal distance
+        - Box is positioned 2-3m from line connecting start and goal
         """
         if not self.config["randomize"]:
             return
         
         rng = np.random
-        rand = self.config
+        cfg = self.config
+        map_size = cfg["map_size"]
+        wall_inset = cfg["wall_inset"]
         
-        # Randomize start position within specified range
-        self.config["start_position"] = [
-            rng.uniform(*rand["start_pos_range"][0]),  # x within range
-            rng.uniform(*rand["start_pos_range"][1])  # y within range
-        ]
+        # Calculate valid spawn area (inside walls with inset)
+        half_size = map_size / 2.0
+        min_coord = -half_size + wall_inset
+        max_coord = half_size - wall_inset
         
-        # Randomize goal position within specified range
-        self.config["goal_position"] = [
-            rng.uniform(*rand["goal_pos_range"][0]),  # x within range
-            rng.uniform(*rand["goal_pos_range"][1])  # y within range
-        ]
+        # Calculate minimum distance between start and goal (2/3 of map diagonal)
+        map_diagonal = np.sqrt(2) * (max_coord - min_coord)
+        min_start_goal_distance = (2.0 / 3.0) * map_diagonal
         
-        # Randomize box position (keep z coordinate fixed)
+        # Randomize start position within valid area
+        max_attempts = 1000
+        start_pos = None
+        goal_pos = None
+        distance = 0.0
+        
+        for attempt in range(max_attempts):
+            # Generate random start position
+            start_pos = np.array([
+                rng.uniform(min_coord, max_coord),
+                rng.uniform(min_coord, max_coord)
+            ])
+            
+            # Generate goal position that satisfies distance constraint
+            for goal_attempt in range(max_attempts):
+                goal_pos = np.array([
+                    rng.uniform(min_coord, max_coord),
+                    rng.uniform(min_coord, max_coord)
+                ])
+                
+                # Check if distance is sufficient
+                distance = np.linalg.norm(goal_pos - start_pos)
+                if distance >= min_start_goal_distance:
+                    break
+            
+            # If we found valid start and goal, break
+            if distance >= min_start_goal_distance:
+                break
+        
+        if start_pos is None or goal_pos is None:
+            # Fallback: use default positions if randomization fails
+            self.logger.warning("Randomization failed, using default positions")
+            start_pos = np.array(cfg["start_position"][:2])
+            goal_pos = np.array(cfg["goal_position"][:2])
+        
+        self.config["start_position"] = start_pos.tolist()
+        self.config["goal_position"] = goal_pos.tolist()
+        
+        # Calculate box position: 2-3m from line connecting start and goal
+        # Vector from start to goal
+        start_to_goal = goal_pos - start_pos
+        line_length = np.linalg.norm(start_to_goal)
+        line_direction = start_to_goal / line_length if line_length > 0 else np.array([1.0, 0.0])
+        
+        # Perpendicular direction (rotate 90 degrees)
+        perp_direction = np.array([-line_direction[1], line_direction[0]])
+        
+        # Random distance along the line (between 0.2 and 0.8 of line length)
+        t = rng.uniform(0.2, 0.8)
+        point_on_line = start_pos + t * start_to_goal
+        
+        # Random distance perpendicular to line (between min and max)
+        perp_distance = rng.uniform(cfg["box_line_distance_min"], cfg["box_line_distance_max"])
+        # Random sign (left or right of line)
+        perp_distance *= rng.choice([-1, 1])
+        
+        # Box position
+        box_pos_2d = point_on_line + perp_distance * perp_direction
+        
+        # Clamp box position to valid area
+        box_pos_2d = np.clip(box_pos_2d, min_coord, max_coord)
+        
+        # Keep original z coordinate
         self.config["box_position"] = [
-            rng.uniform(*rand["box_pos_range"][0]),  # x within range
-            rng.uniform(*rand["box_pos_range"][1]),  # y within range
-            self.config["box_position"][2]          # keep original z
+            float(box_pos_2d[0]),
+            float(box_pos_2d[1]),
+            cfg["box_position"][2]
         ]
         
         # Randomize box scale in all three dimensions
         self.config["box_scale"] = [
-            rng.uniform(*rand["box_scale_range"][0]),  # x scale
-            rng.uniform(*rand["box_scale_range"][1]),  # y scale
-            rng.uniform(*rand["box_scale_range"][2])   # z scale
+            rng.uniform(*cfg["box_scale_range"][0]),  # x scale
+            rng.uniform(*cfg["box_scale_range"][1]),  # y scale
+            rng.uniform(*cfg["box_scale_range"][2])   # z scale
         ]
         
         # Randomize box mass within specified range
-        self.config["box_mass"] = rng.uniform(*rand["box_mass_range"])
+        self.config["box_mass"] = rng.uniform(*cfg["box_mass_range"])
         
-        self.logger.info("Randomization applied")
+        self.logger.info(f"Randomization applied:")
+        self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
+        self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
+        self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
+        self.logger.info(f"  Box: [{box_pos_2d[0]:.2f}, {box_pos_2d[1]:.2f}]")
 
     # ===================== Environment Setup =====================
     def setup_environment(self):
@@ -243,12 +313,12 @@ class SpotSimulation:
         light_prim = self.stage.GetPrimAtPath("/World/DomeLight")
         if light_prim.IsValid():
             light_prim.GetAttribute("inputs:intensity").Set(cfg["dome_light_intensity"])
-        
+    
         # 2. Create ground plane with physics properties
         self.world.scene.add_default_ground_plane(
             z_position=0,
             name="default_ground_plane",
-            prim_path="/World/GroundPlane",
+        prim_path="/World/GroundPlane",
             static_friction=cfg["ground_friction_static"],
             dynamic_friction=cfg["ground_friction_dynamic"],
             restitution=cfg["ground_restitution"],
@@ -342,6 +412,35 @@ class SpotSimulation:
         goal_xform.ClearXformOpOrder()
         goal_xform.AddTranslateOp().Set(Gf.Vec3d(float(goal_pos[0]), float(goal_pos[1]), 0.0))
         
+        # 9. Create camera on root prim and set as default view
+        # Position: Z = +17m, Rotation: Z axis -90 degrees
+        camera_path = "/World/Camera"
+        camera = UsdGeom.Camera.Define(self.stage, camera_path)
+        
+        # Set camera position: [0, 0, 17]
+        camera_xform = UsdGeom.Xformable(camera)
+        camera_xform.ClearXformOpOrder()
+        translate_op = camera_xform.AddTranslateOp()
+        translate_op.Set(Gf.Vec3d(0.0, 0.0, 45.0))
+        
+        # Set camera rotation: -90 degrees around Z axis
+        # Rotation around Z axis: -90 degrees = -π/2 radians
+        rotation_z = -np.pi / 2.0
+        # Convert to quaternion for Z-axis rotation (use GfQuatf for camera)
+        half_angle = rotation_z / 2.0
+        quat = Gf.Quatf(
+            float(np.cos(half_angle)),  # w
+            0.0,                        # x
+            0.0,                        # y
+            float(np.sin(half_angle))   # z
+        )
+        rotate_op = camera_xform.AddOrientOp()
+        rotate_op.Set(quat)
+        
+        # Store camera path for later activation (viewport may not be ready yet)
+        self.camera_path = camera_path
+        self.logger.info(f"Camera created at {camera_path}")
+        
         self.logger.info("Environment setup complete")
 
     def setup_robot(self):
@@ -367,14 +466,178 @@ class SpotSimulation:
         ])
         
         # Add Spot robot to scene at start position with calculated orientation
+        # Robot z position is 0.0 (on the ground) - the robot model has its own base height
         self.spot = SpotFlatTerrainPolicy(
             prim_path="/World/Spot",
             name="Spot",
-            position=np.array([self.start_pos[0], self.start_pos[1], self.config["robot_height"]]),
+            position=np.array([self.start_pos[0], self.start_pos[1], 0.0]),
             orientation=orientation,
         )
         
         self.logger.info(f"Robot placed at [{self.start_pos[0]:.2f}, {self.start_pos[1]:.2f}]")
+        
+        # Create hemisphere at goal point
+        self._create_goal_hemisphere()
+
+    def _create_goal_hemisphere(self):
+        """
+        Create a hemisphere at the goal point with specified diameter.
+        Hemisphere is positioned at goal point, with half sphere above ground.
+        """
+        try:
+            cfg = self.config
+            diameter = cfg["goal_hemisphere_diameter"]
+            radius = diameter / 2.0
+            
+            # Create sphere for hemisphere (we'll position it so half is above ground)
+            hemisphere_path = "/World/GoalHemisphere"
+            hemisphere = UsdGeom.Sphere.Define(self.stage, hemisphere_path)
+            hemisphere.GetRadiusAttr().Set(radius)
+            
+            # Set color (blue to match goal marker)
+            hemisphere.CreateDisplayColorAttr().Set([Gf.Vec3f(0.0, 0.0, 1.0)])  # Blue color
+            
+            # Position sphere so that half is above ground (z = radius)
+            # This creates the hemisphere effect
+            hemisphere_xform = UsdGeom.Xformable(hemisphere)
+            hemisphere_xform.ClearXformOpOrder()
+            translate_op = hemisphere_xform.AddTranslateOp()
+            translate_op.Set(Gf.Vec3d(
+                float(self.goal_pos[0]), 
+                float(self.goal_pos[1]), 
+                float(radius)  # Position at radius height so half sphere is above ground
+            ))
+            
+            self.logger.info(f"Goal hemisphere created at [{self.goal_pos[0]:.2f}, {self.goal_pos[1]:.2f}] with diameter {diameter:.2f}m")
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to create goal hemisphere: {e}")
+
+    def _setup_robot_camera(self):
+        """
+        Create ego-view camera attached to Spot robot body.
+        Creates a camera prim under /World/Spot/body with transformations, then adds camera under that prim.
+        Transformations: z +0.2m, x -0.4m, rotation x 90°, y 90°
+        Must be called after world reset when robot is fully initialized.
+        """
+        try:
+            # Attach camera to /World/Spot/body
+            body_path = "/World/Spot/body"
+            body_prim = self.stage.GetPrimAtPath(body_path)
+            if not body_prim.IsValid():
+                self.logger.warning(f"Robot body prim not found at {body_path}, cannot attach camera")
+                return
+            
+            # Create a prim for the camera with transformations
+            camera_prim_path = f"{body_path}/CameraPrim"
+            camera_prim = UsdGeom.Xform.Define(self.stage, camera_prim_path)
+            
+            # Apply transformations to the camera prim
+            # Translation: (0, 0, 0) - no translation
+            # Rotation: Quaternion WXYZ (0.5, 0.5, -0.5, -0.5) to avoid gimbal lock
+            camera_xform = UsdGeom.Xformable(camera_prim)
+            camera_xform.ClearXformOpOrder()
+            
+            # Add translation: (0, 0, 0)
+            translate_op = camera_xform.AddTranslateOp()
+            translate_op.Set(Gf.Vec3f(0.0, 0.0, 0.0))
+            
+            # Add rotation: Quaternion WXYZ (0.5, 0.5, -0.5, -0.5)
+            quat = Gf.Quatf(0.5, 0.5, -0.5, -0.5)  # (w, x, y, z)
+            
+            # Add rotation operation
+            rotate_op = camera_xform.AddOrientOp()
+            rotate_op.Set(quat)
+            
+            # Create camera as child of the camera prim
+            camera_path = f"{camera_prim_path}/EgoCamera"
+            camera = UsdGeom.Camera.Define(self.stage, camera_path)
+            
+            # Set focal length to 24.7mm
+            camera.GetFocalLengthAttr().Set(24.7)
+            
+            self.logger.info(f"Ego-view camera created at {camera_path} (quaternion WXYZ=[0.5, 0.5, -0.5, -0.5], translation=[0,0,0], focal_length=24.7mm)")
+            
+            # Store camera path for viewport creation
+            self.robot_camera_path = camera_path
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to create robot camera: {e}")
+    
+    def _open_robot_camera_viewport(self, camera_path):
+        """
+        Open a new viewport window showing the robot's ego-view camera.
+        """
+        try:
+            # Use Isaac Sim viewport utility to create new viewport window
+            from isaacsim.core.utils.viewports import create_viewport_for_camera
+            
+            # Create new viewport window for robot camera
+            create_viewport_for_camera(
+                viewport_name="RobotEgoView",
+                camera_prim_path=camera_path,
+                width=800,
+                height=600,
+                position_x=100,
+                position_y=100
+            )
+            self.logger.info(f"Robot ego-view camera window opened with camera {camera_path}")
+            
+        except ImportError:
+            # Fallback: try alternative method if import fails
+            try:
+                import omni.kit.viewport.utility as vp_utils
+                viewport = vp_utils.get_active_viewport()
+                if viewport:
+                    self.logger.info(f"Setting robot camera {camera_path} (fallback method - using existing viewport)")
+            except Exception as e2:
+                self.logger.warning(f"Could not open robot camera viewport window: {e2}")
+        except Exception as e:
+            self.logger.warning(f"Could not open robot camera viewport window: {e}")
+
+    def _set_viewport_camera(self):
+        """
+        Set the camera as the default viewport camera.
+        Called after world reset when viewport should be ready.
+        """
+        if not hasattr(self, 'camera_path') or self.camera_path is None:
+            return
+        
+        try:
+            # Method 1: Use viewport utility to get active viewport
+            import omni.kit.viewport.utility as vp_utils
+            viewport = vp_utils.get_active_viewport()
+            if viewport:
+                viewport.set_active_camera(self.camera_path)
+                self.logger.info(f"Camera set as default view at {self.camera_path}")
+                return
+        except Exception as e:
+            self.logger.debug(f"Method 1 failed: {e}")
+        
+        try:
+            # Method 2: Try to get viewport by window name
+            import omni.kit.viewport.utility as vp_utils
+            viewport_window = vp_utils.get_viewport_from_window_name("Viewport")
+            if viewport_window:
+                viewport_window.set_active_camera(self.camera_path)
+                self.logger.info(f"Camera set as default view at {self.camera_path} (method 2)")
+                return
+        except Exception as e:
+            self.logger.debug(f"Method 2 failed: {e}")
+        
+        try:
+            # Method 3: Use omni.kit.commands
+            omni.kit.commands.execute(
+                "SetActiveCamera",
+                path=self.camera_path
+            )
+            self.logger.info(f"Camera set as default view at {self.camera_path} (method 3)")
+            return
+        except Exception as e:
+            self.logger.debug(f"Method 3 failed: {e}")
+        
+        # If all methods fail, log warning but continue
+        self.logger.warning(f"Could not set camera as default view. Camera exists at {self.camera_path}")
 
     def _on_physics_step(self, step_size):
         """
@@ -412,8 +675,9 @@ class SpotSimulation:
                     box_pos_world = box_transform.ExtractTranslation()
                     box_pos = np.array([box_pos_world[0], box_pos_world[1], box_pos_world[2]])
                     
-                    # Calculate L1 distance (Manhattan distance) to box
-                    l1_distance = np.sum(np.abs(robot_pos[:2] - box_pos[:2]))
+                    # Calculate L1 distance (Manhattan distance) between box and goal
+                    goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
+                    l1_distance = np.sum(np.abs(box_pos[:2] - goal_pos_2d))
                 else:
                     l1_distance = 0.0
                 
@@ -423,8 +687,10 @@ class SpotSimulation:
                     f"RPY: [{np.degrees(robot_rpy[0]):.2f}, {np.degrees(robot_rpy[1]):.2f}, {np.degrees(robot_rpy[2]):.2f}]°, "
                     f"Cmd vel: [vx={cmd_vel[0]:.2f}, vy={cmd_vel[1]:.2f}, yaw={cmd_vel[2]:.2f}]"
                 )
-                # Log at INFO level: distance to box
-                self.logger.info(f"Robot <-> Box L1 distance: {l1_distance:.2f} m")
+                # Log at INFO level: distance between box and goal
+                self.logger.info(
+                    f"Box <-> Goal L1 distance: {l1_distance:.2f} m"
+                )
         
         # Robot control: apply commands to robot
         if self.physics_ready:
@@ -476,6 +742,16 @@ class SpotSimulation:
         
         # Reset world (required before querying articulation properties)
         self.world.reset()
+        
+        # Create ego-view camera attached to robot base (after world reset, robot is fully initialized)
+        self._setup_robot_camera()
+        
+        # Set camera as default viewport camera (after world reset, viewport should be ready)
+        self._set_viewport_camera()
+        
+        # Open robot ego-view camera window (after world reset, viewport system should be ready)
+        if hasattr(self, 'robot_camera_path') and self.robot_camera_path:
+            self._open_robot_camera_viewport(self.robot_camera_path)
         
         # Register physics callback for robot control and logging
         self.world.add_physics_callback("physics_step", callback_fn=self._on_physics_step)
