@@ -48,6 +48,7 @@ DEFAULT_CONFIG = {
     "dome_light_intensity": 600.0,
     "marker_radius": 0.3,
     "goal_hemisphere_diameter": 1.0,  # Diameter of hemisphere at goal point (meters)
+    "use_box": True,  # Whether to spawn the obstacle box in the environment
     
     # Randomizable parameters (will be set by randomization function)
     "start_position": [4.0, 4.0],
@@ -235,52 +236,60 @@ class SpotSimulation:
         self.config["start_position"] = start_pos.tolist()
         self.config["goal_position"] = goal_pos.tolist()
         
-        # Calculate box position: 2-3m from line connecting start and goal
-        # Vector from start to goal
-        start_to_goal = goal_pos - start_pos
-        line_length = np.linalg.norm(start_to_goal)
-        line_direction = start_to_goal / line_length if line_length > 0 else np.array([1.0, 0.0])
-        
-        # Perpendicular direction (rotate 90 degrees)
-        perp_direction = np.array([-line_direction[1], line_direction[0]])
-        
-        # Random distance along the line (between 0.2 and 0.8 of line length)
-        t = rng.uniform(0.2, 0.8)
-        point_on_line = start_pos + t * start_to_goal
-        
-        # Random distance perpendicular to line (between min and max)
-        perp_distance = rng.uniform(cfg["box_line_distance_min"], cfg["box_line_distance_max"])
-        # Random sign (left or right of line)
-        perp_distance *= rng.choice([-1, 1])
-        
-        # Box position
-        box_pos_2d = point_on_line + perp_distance * perp_direction
-        
-        # Clamp box position to valid area
-        box_pos_2d = np.clip(box_pos_2d, min_coord, max_coord)
-        
-        # Keep original z coordinate
-        self.config["box_position"] = [
-            float(box_pos_2d[0]),
-            float(box_pos_2d[1]),
-            cfg["box_position"][2]
-        ]
-        
-        # Randomize box scale in all three dimensions
-        self.config["box_scale"] = [
-            rng.uniform(*cfg["box_scale_range"][0]),  # x scale
-            rng.uniform(*cfg["box_scale_range"][1]),  # y scale
-            rng.uniform(*cfg["box_scale_range"][2])   # z scale
-        ]
-        
-        # Randomize box mass within specified range
-        self.config["box_mass"] = rng.uniform(*cfg["box_mass_range"])
-        
-        self.logger.info(f"Randomization applied:")
-        self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
-        self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
-        self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
-        self.logger.info(f"  Box: [{box_pos_2d[0]:.2f}, {box_pos_2d[1]:.2f}]")
+        # Randomize box properties only if use_box is True
+        if cfg.get("use_box", True):
+            # Calculate box position: 2-3m from line connecting start and goal
+            # Vector from start to goal
+            start_to_goal = goal_pos - start_pos
+            line_length = np.linalg.norm(start_to_goal)
+            line_direction = start_to_goal / line_length if line_length > 0 else np.array([1.0, 0.0])
+            
+            # Perpendicular direction (rotate 90 degrees)
+            perp_direction = np.array([-line_direction[1], line_direction[0]])
+            
+            # Random distance along the line (between 0.2 and 0.8 of line length)
+            t = rng.uniform(0.2, 0.8)
+            point_on_line = start_pos + t * start_to_goal
+            
+            # Random distance perpendicular to line (between min and max)
+            perp_distance = rng.uniform(cfg["box_line_distance_min"], cfg["box_line_distance_max"])
+            # Random sign (left or right of line)
+            perp_distance *= rng.choice([-1, 1])
+            
+            # Box position
+            box_pos_2d = point_on_line + perp_distance * perp_direction
+            
+            # Clamp box position to valid area
+            box_pos_2d = np.clip(box_pos_2d, min_coord, max_coord)
+            
+            # Keep original z coordinate
+            self.config["box_position"] = [
+                float(box_pos_2d[0]),
+                float(box_pos_2d[1]),
+                cfg["box_position"][2]
+            ]
+            
+            # Randomize box scale in all three dimensions
+            self.config["box_scale"] = [
+                rng.uniform(*cfg["box_scale_range"][0]),  # x scale
+                rng.uniform(*cfg["box_scale_range"][1]),  # y scale
+                rng.uniform(*cfg["box_scale_range"][2])   # z scale
+            ]
+            
+            # Randomize box mass within specified range
+            self.config["box_mass"] = rng.uniform(*cfg["box_mass_range"])
+            
+            self.logger.info(f"Randomization applied:")
+            self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
+            self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
+            self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
+            self.logger.info(f"  Box: [{box_pos_2d[0]:.2f}, {box_pos_2d[1]:.2f}]")
+        else:
+            # Box is disabled, only log start and goal
+            self.logger.info(f"Randomization applied (box disabled):")
+            self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
+            self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
+            self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
 
     # ===================== Environment Setup =====================
     def setup_environment(self):
@@ -370,31 +379,34 @@ class SpotSimulation:
             color=wall_color
         ))
         
-        # 5. Create dynamic obstacle box (can be pushed by robot)
-        self.world.scene.add(DynamicCuboid(
-            prim_path="/World/ObstacleBox", name="obstacle_box",
-            position=box_pos, scale=box_scale, color=box_color,
-            mass=cfg["box_mass"], linear_velocity=np.array([0.0, 0.0, 0.0])
-        ))
-        
-        # 6. Apply physics material to box (friction and restitution)
-        box_prim = self.stage.GetPrimAtPath("/World/ObstacleBox")
-        if box_prim.IsValid():
-            physics_material_path = "/World/Materials/BoxPhysicsMaterial"
-            # Create physics material with friction properties
-            physics_material = UsdPhysics.MaterialAPI.Apply(
-                self.stage.DefinePrim(physics_material_path, "Material")
-            )
-            physics_material.CreateStaticFrictionAttr().Set(cfg["box_friction_static"])
-            physics_material.CreateDynamicFrictionAttr().Set(cfg["box_friction_dynamic"])
-            physics_material.CreateRestitutionAttr().Set(cfg["box_restitution"])
+        # 5. Create dynamic obstacle box (can be pushed by robot) - only if use_box is True
+        if cfg["use_box"]:
+            self.world.scene.add(DynamicCuboid(
+                prim_path="/World/ObstacleBox", name="obstacle_box",
+                position=box_pos, scale=box_scale, color=box_color,
+                mass=cfg["box_mass"], linear_velocity=np.array([0.0, 0.0, 0.0])
+            ))
             
-            # Bind physics material to box collider
-            collider = UsdPhysics.CollisionAPI.Get(self.stage, "/World/ObstacleBox")
-            if collider:
-                collider.GetPrim().CreateRelationship("physics:material").SetTargets(
-                    [Sdf.Path(physics_material_path)]
+            # 6. Apply physics material to box (friction and restitution)
+            box_prim = self.stage.GetPrimAtPath("/World/ObstacleBox")
+            if box_prim.IsValid():
+                physics_material_path = "/World/Materials/BoxPhysicsMaterial"
+                # Create physics material with friction properties
+                physics_material = UsdPhysics.MaterialAPI.Apply(
+                    self.stage.DefinePrim(physics_material_path, "Material")
                 )
+                physics_material.CreateStaticFrictionAttr().Set(cfg["box_friction_static"])
+                physics_material.CreateDynamicFrictionAttr().Set(cfg["box_friction_dynamic"])
+                physics_material.CreateRestitutionAttr().Set(cfg["box_restitution"])
+                
+                # Bind physics material to box collider
+                collider = UsdPhysics.CollisionAPI.Get(self.stage, "/World/ObstacleBox")
+                if collider:
+                    collider.GetPrim().CreateRelationship("physics:material").SetTargets(
+                        [Sdf.Path(physics_material_path)]
+                    )
+        else:
+            self.logger.info("Box spawning disabled (use_box=False)")
         
         # 7. Create start marker (red sphere) - visual only, no physics
         start_sphere = UsdGeom.Sphere.Define(self.stage, "/World/StartMarker")
@@ -667,19 +679,20 @@ class SpotSimulation:
                 cmd_vel = self.controller.get_command()  # Command velocity [vx, vy, yaw]
                 
                 # Get box position from stage (box is dynamic, so position can change)
-                box_prim = self.stage.GetPrimAtPath("/World/ObstacleBox")
-                if box_prim.IsValid():
-                    # Get world transform of the box
-                    box_xform = UsdGeom.Xformable(box_prim)
-                    box_transform = box_xform.ComputeLocalToWorldTransform(0)  # Get transform at time 0
-                    box_pos_world = box_transform.ExtractTranslation()
-                    box_pos = np.array([box_pos_world[0], box_pos_world[1], box_pos_world[2]])
-                    
-                    # Calculate L1 distance (Manhattan distance) between box and goal
-                    goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
-                    l1_distance = np.sum(np.abs(box_pos[:2] - goal_pos_2d))
-                else:
-                    l1_distance = 0.0
+                # Only if box is enabled in configuration
+                l1_distance = 0.0
+                if self.config.get("use_box", True):
+                    box_prim = self.stage.GetPrimAtPath("/World/ObstacleBox")
+                    if box_prim.IsValid():
+                        # Get world transform of the box
+                        box_xform = UsdGeom.Xformable(box_prim)
+                        box_transform = box_xform.ComputeLocalToWorldTransform(0)  # Get transform at time 0
+                        box_pos_world = box_transform.ExtractTranslation()
+                        box_pos = np.array([box_pos_world[0], box_pos_world[1], box_pos_world[2]])
+                        
+                        # Calculate L1 distance (Manhattan distance) between box and goal
+                        goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
+                        l1_distance = np.sum(np.abs(box_pos[:2] - goal_pos_2d))
                 
                 # Log at DEBUG level: detailed robot state
                 self.logger.debug(
@@ -687,10 +700,11 @@ class SpotSimulation:
                     f"RPY: [{np.degrees(robot_rpy[0]):.2f}, {np.degrees(robot_rpy[1]):.2f}, {np.degrees(robot_rpy[2]):.2f}]°, "
                     f"Cmd vel: [vx={cmd_vel[0]:.2f}, vy={cmd_vel[1]:.2f}, yaw={cmd_vel[2]:.2f}]"
                 )
-                # Log at INFO level: distance between box and goal
-                self.logger.info(
-                    f"Box <-> Goal L1 distance: {l1_distance:.2f} m"
-                )
+                # Log at INFO level: distance between box and goal (only if box exists)
+                if self.config.get("use_box", True):
+                    self.logger.info(
+                        f"Box <-> Goal L1 distance: {l1_distance:.2f} m"
+                    )
         
         # Robot control: apply commands to robot
         if self.physics_ready:
