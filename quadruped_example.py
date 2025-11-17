@@ -52,7 +52,7 @@ DEFAULT_CONFIG = {
     "marker_radius": 0.3,
     "goal_hemisphere_diameter": 1.0,  # Diameter of hemisphere at goal point (meters)
     "use_object": True,  # Whether to spawn an object in the environment
-    "object_type": "gate",  # Type of object to spawn: "box", "sphere", "gate", etc.
+    "object_type": "box",  # Type of object to spawn: "box", "sphere", "gate", etc.
     
     # Gate-specific parameters
     "wall_depth_min": 0.3,  # Minimum wall depth (meters)
