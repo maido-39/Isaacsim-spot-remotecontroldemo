@@ -17,6 +17,9 @@ from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
+# Import for GUI button
+import omni.ui as ui
+
 # SimulationApp 초기화 후에만 다른 모듈을 import할 수 있습니다.
 import numpy as np
 import logging
@@ -48,7 +51,19 @@ DEFAULT_CONFIG = {
     "dome_light_intensity": 600.0,
     "marker_radius": 0.3,
     "goal_hemisphere_diameter": 1.0,  # Diameter of hemisphere at goal point (meters)
-    "use_box": True,  # Whether to spawn the obstacle box in the environment
+    "use_object": True,  # Whether to spawn an object in the environment
+    "object_type": "gate",  # Type of object to spawn: "box", "sphere", "gate", etc.
+    
+    # Gate-specific parameters
+    "wall_depth_min": 0.3,  # Minimum wall depth (meters)
+    "wall_depth_max": 1.0,  # Maximum wall depth (meters)
+    "gate_y_offset_min": -2.0,  # Minimum Y offset (meters)
+    "gate_y_offset_max": 2.0,  # Maximum Y offset (meters)
+    "gap_min": 1.0,  # Minimum gap between gates (meters)
+    "gap_max": 1.5,  # Maximum gap between gates (meters)
+    "gate_location_min": 0.2,  # Minimum location along start-goal line (0.0-1.0)
+    "gate_location_max": 0.8,  # Maximum location along start-goal line (0.0-1.0)
+    "gate_color": [0.5, 0.3, 0.1],  # Gate wall color [r, g, b]
     
     # Randomizable parameters (will be set by randomization function)
     "start_position": [4.0, 4.0],
@@ -117,6 +132,7 @@ class SpotSimulation:
         self.start_pos = None           # Start position [x, y]
         self.goal_pos = None            # Goal position [x, y]
         self.robot_camera_path = None   # Path to robot ego-view camera
+        self._gate_button_window = None # GUI window for gate transform control
 
     def _setup_logging(self):
         """
@@ -236,60 +252,633 @@ class SpotSimulation:
         self.config["start_position"] = start_pos.tolist()
         self.config["goal_position"] = goal_pos.tolist()
         
-        # Randomize box properties only if use_box is True
-        if cfg.get("use_box", True):
-            # Calculate box position: 2-3m from line connecting start and goal
-            # Vector from start to goal
-            start_to_goal = goal_pos - start_pos
-            line_length = np.linalg.norm(start_to_goal)
-            line_direction = start_to_goal / line_length if line_length > 0 else np.array([1.0, 0.0])
+        # Randomize object properties only if use_object is True
+        if cfg.get("use_object", True):
+            object_type = cfg.get("object_type", "box")
             
-            # Perpendicular direction (rotate 90 degrees)
-            perp_direction = np.array([-line_direction[1], line_direction[0]])
-            
-            # Random distance along the line (between 0.2 and 0.8 of line length)
-            t = rng.uniform(0.2, 0.8)
-            point_on_line = start_pos + t * start_to_goal
-            
-            # Random distance perpendicular to line (between min and max)
-            perp_distance = rng.uniform(cfg["box_line_distance_min"], cfg["box_line_distance_max"])
-            # Random sign (left or right of line)
-            perp_distance *= rng.choice([-1, 1])
-            
-            # Box position
-            box_pos_2d = point_on_line + perp_distance * perp_direction
-            
-            # Clamp box position to valid area
-            box_pos_2d = np.clip(box_pos_2d, min_coord, max_coord)
-            
-            # Keep original z coordinate
-            self.config["box_position"] = [
-                float(box_pos_2d[0]),
-                float(box_pos_2d[1]),
-                cfg["box_position"][2]
-            ]
-            
-            # Randomize box scale in all three dimensions
-            self.config["box_scale"] = [
-                rng.uniform(*cfg["box_scale_range"][0]),  # x scale
-                rng.uniform(*cfg["box_scale_range"][1]),  # y scale
-                rng.uniform(*cfg["box_scale_range"][2])   # z scale
-            ]
-            
-            # Randomize box mass within specified range
-            self.config["box_mass"] = rng.uniform(*cfg["box_mass_range"])
-            
-            self.logger.info(f"Randomization applied:")
-            self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
-            self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
-            self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
-            self.logger.info(f"  Box: [{box_pos_2d[0]:.2f}, {box_pos_2d[1]:.2f}]")
+            if object_type == "gate":
+                # Gate randomization is handled in _create_gate_object()
+                # Just log start and goal here
+                self.logger.info(f"Randomization applied (gate will be created during setup):")
+                self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
+                self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
+                self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
+            else:
+                # Box/sphere randomization
+                # Calculate box position: 2-3m from line connecting start and goal
+                # Vector from start to goal
+                start_to_goal = goal_pos - start_pos
+                line_length = np.linalg.norm(start_to_goal)
+                line_direction = start_to_goal / line_length if line_length > 0 else np.array([1.0, 0.0])
+                
+                # Perpendicular direction (rotate 90 degrees)
+                perp_direction = np.array([-line_direction[1], line_direction[0]])
+                
+                # Random distance along the line (between 0.2 and 0.8 of line length)
+                t = rng.uniform(0.2, 0.8)
+                point_on_line = start_pos + t * start_to_goal
+                
+                # Random distance perpendicular to line (between min and max)
+                perp_distance = rng.uniform(cfg["box_line_distance_min"], cfg["box_line_distance_max"])
+                # Random sign (left or right of line)
+                perp_distance *= rng.choice([-1, 1])
+                
+                # Box position
+                box_pos_2d = point_on_line + perp_distance * perp_direction
+                
+                # Clamp box position to valid area
+                box_pos_2d = np.clip(box_pos_2d, min_coord, max_coord)
+                
+                # Keep original z coordinate
+                self.config["box_position"] = [
+                    float(box_pos_2d[0]),
+                    float(box_pos_2d[1]),
+                    cfg["box_position"][2]
+                ]
+                
+                # Randomize box scale in all three dimensions
+                self.config["box_scale"] = [
+                    rng.uniform(*cfg["box_scale_range"][0]),  # x scale
+                    rng.uniform(*cfg["box_scale_range"][1]),  # y scale
+                    rng.uniform(*cfg["box_scale_range"][2])   # z scale
+                ]
+                
+                # Randomize box mass within specified range
+                self.config["box_mass"] = rng.uniform(*cfg["box_mass_range"])
+                
+                self.logger.info(f"Randomization applied:")
+                self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
+                self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
+                self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
+                self.logger.info(f"  {object_type.capitalize()}: [{box_pos_2d[0]:.2f}, {box_pos_2d[1]:.2f}]")
         else:
             # Box is disabled, only log start and goal
-            self.logger.info(f"Randomization applied (box disabled):")
+            self.logger.info(f"Randomization applied (object disabled):")
             self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
             self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
             self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
+
+    # ===================== Object Management =====================
+    def _get_object_prim_path(self):
+        """
+        Get the prim path for the current object based on object_type.
+        
+        Returns:
+            str: Prim path of the object
+        """
+        object_type = self.config.get("object_type", "box")
+        if object_type == "box":
+            return "/World/ObstacleBox"
+        elif object_type == "sphere":
+            return "/World/ObstacleSphere"
+        elif object_type == "gate":
+            return "/World/Gate"  # Base path for gate (contains GateL and GateR)
+        else:
+            # Default to box path for unknown types
+            return "/World/ObstacleBox"
+    
+    def _create_object(self, cfg, position, scale, color):
+        """
+        Create a dynamic object in the environment based on object_type.
+        Modular function to support different object types (box, sphere, etc.).
+        
+        Args:
+            cfg: Configuration dictionary
+            position: Object position [x, y, z]
+            scale: Object scale [x, y, z]
+            color: Object color [r, g, b]
+        """
+        object_type = cfg.get("object_type", "box")
+        object_path = self._get_object_prim_path()
+        
+        if object_type == "box":
+            self._create_box_object(cfg, object_path, position, scale, color)
+        elif object_type == "sphere":
+            self._create_sphere_object(cfg, object_path, position, scale, color)
+        elif object_type == "gate":
+            # Gate doesn't use position/scale/color from randomization, it calculates its own
+            self._create_gate_object(cfg)
+        else:
+            self.logger.warning(f"Unknown object type '{object_type}', defaulting to box")
+            self._create_box_object(cfg, object_path, position, scale, color)
+    
+    def _create_box_object(self, cfg, prim_path, position, scale, color):
+        """
+        Create a dynamic box object.
+        
+        Args:
+            cfg: Configuration dictionary
+            prim_path: USD prim path for the box
+            position: Box position [x, y, z]
+            scale: Box scale [x, y, z]
+            color: Box color [r, g, b]
+        """
+        # Create dynamic box
+        self.world.scene.add(DynamicCuboid(
+            prim_path=prim_path, name="obstacle_box",
+            position=position, scale=scale, color=color,
+            mass=cfg["box_mass"], linear_velocity=np.array([0.0, 0.0, 0.0])
+        ))
+        
+        # Apply physics material to box (friction and restitution)
+        box_prim = self.stage.GetPrimAtPath(prim_path)
+        if box_prim.IsValid():
+            physics_material_path = "/World/Materials/BoxPhysicsMaterial"
+            # Create physics material with friction properties
+            physics_material = UsdPhysics.MaterialAPI.Apply(
+                self.stage.DefinePrim(physics_material_path, "Material")
+            )
+            physics_material.CreateStaticFrictionAttr().Set(cfg["box_friction_static"])
+            physics_material.CreateDynamicFrictionAttr().Set(cfg["box_friction_dynamic"])
+            physics_material.CreateRestitutionAttr().Set(cfg["box_restitution"])
+            
+            # Bind physics material to box collider
+            collider = UsdPhysics.CollisionAPI.Get(self.stage, prim_path)
+            if collider:
+                collider.GetPrim().CreateRelationship("physics:material").SetTargets(
+                    [Sdf.Path(physics_material_path)]
+                )
+        
+        self.logger.info(f"Box object created at {prim_path}")
+    
+    def _create_sphere_object(self, cfg, prim_path, position, scale, color):
+        """
+        Create a dynamic sphere object.
+        
+        Args:
+            cfg: Configuration dictionary
+            prim_path: USD prim path for the sphere
+            position: Sphere position [x, y, z]
+            scale: Sphere scale [x, y, z] (radius will be average of x, y, z)
+            color: Sphere color [r, g, b]
+        """
+        # For sphere, use average of scale dimensions as radius
+        radius = np.mean(scale) if len(scale) >= 3 else scale[0] if len(scale) > 0 else 0.5
+        
+        # Create dynamic sphere using USD prim (Isaac Sim doesn't have DynamicSphere directly)
+        sphere = UsdGeom.Sphere.Define(self.stage, prim_path)
+        sphere.GetRadiusAttr().Set(radius)
+        sphere.CreateDisplayColorAttr().Set([Gf.Vec3f(color[0], color[1], color[2])])
+        
+        # Set position
+        sphere_xform = UsdGeom.Xformable(sphere)
+        sphere_xform.ClearXformOpOrder()
+        sphere_xform.AddTranslateOp().Set(Gf.Vec3d(float(position[0]), float(position[1]), float(position[2])))
+        
+        # Apply physics properties
+        sphere_prim = self.stage.GetPrimAtPath(prim_path)
+        if sphere_prim.IsValid():
+            # Add collision API
+            UsdPhysics.CollisionAPI.Apply(sphere_prim)
+            
+            # Add rigid body API
+            rigid_body = UsdPhysics.RigidBodyAPI.Apply(sphere_prim)
+            rigid_body.CreateMassAttr().Set(cfg["box_mass"])
+            
+            # Apply physics material
+            physics_material_path = "/World/Materials/SpherePhysicsMaterial"
+            physics_material = UsdPhysics.MaterialAPI.Apply(
+                self.stage.DefinePrim(physics_material_path, "Material")
+            )
+            physics_material.CreateStaticFrictionAttr().Set(cfg["box_friction_static"])
+            physics_material.CreateDynamicFrictionAttr().Set(cfg["box_friction_dynamic"])
+            physics_material.CreateRestitutionAttr().Set(cfg["box_restitution"])
+            
+            # Bind physics material
+            collider = UsdPhysics.CollisionAPI.Get(self.stage, prim_path)
+            if collider:
+                collider.GetPrim().CreateRelationship("physics:material").SetTargets(
+                    [Sdf.Path(physics_material_path)]
+                )
+        
+        self.logger.info(f"Sphere object created at {prim_path} with radius {radius:.2f}m")
+    
+    # ===================== Debug Transform Methods =====================
+    def get_prim_transform(self, prim_path):
+        """
+        Get transform (translation, rotation, scale) of a prim.
+        
+        Args:
+            prim_path: Path to the prim (e.g., "/World/Gate")
+            
+        Returns:
+            dict: Dictionary containing 'translation', 'rotation_euler', 'rotation_quat', 'scale'
+                  Returns None if prim is invalid or not xformable
+        """
+        prim = self.stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            self.logger.warning(f"Prim at {prim_path} is not valid")
+            return None
+        
+        if not prim.IsA(UsdGeom.Xformable):
+            self.logger.warning(f"Prim at {prim_path} is not Xformable")
+            return None
+        
+        xformable = UsdGeom.Xformable(prim)
+        
+        # Get all xform ops
+        xform_ops = xformable.GetOrderedXformOps()
+        
+        result = {
+            'translation': None,
+            'rotation_euler': None,
+            'rotation_quat': None,
+            'scale': None,
+            'xform_ops': []
+        }
+        
+        for op in xform_ops:
+            op_type = op.GetOpType()
+            op_name = op.GetOpName()
+            value = op.Get()
+            
+            result['xform_ops'].append({
+                'name': op_name,
+                'type': str(op_type),
+                'value': value
+            })
+            
+            if op_type == UsdGeom.XformOp.TypeTranslate:
+                result['translation'] = [value[0], value[1], value[2]]
+            elif op_type == UsdGeom.XformOp.TypeRotateXYZ:
+                result['rotation_euler'] = [value[0], value[1], value[2]]
+            elif op_type == UsdGeom.XformOp.TypeOrient:
+                quat = value
+                result['rotation_quat'] = {
+                    'w': quat.GetReal(),
+                    'x': quat.GetImaginary()[0],
+                    'y': quat.GetImaginary()[1],
+                    'z': quat.GetImaginary()[2]
+                }
+                # Convert quaternion to euler angles (in degrees)
+                # Assuming Z-axis rotation only for simplicity
+                yaw = 2.0 * np.arctan2(quat.GetImaginary()[2], quat.GetReal())
+                result['rotation_euler_from_quat'] = [0.0, 0.0, np.degrees(yaw)]
+            elif op_type == UsdGeom.XformOp.TypeScale:
+                result['scale'] = [value[0], value[1], value[2]]
+        
+        # Get world transform
+        world_transform = xformable.ComputeLocalToWorldTransform(0)
+        result['world_matrix'] = world_transform
+        
+        # Log the results
+        self.logger.info(f"Transform for prim '{prim_path}':")
+        self.logger.info(f"  Translation: {result['translation']}")
+        if result['rotation_quat']:
+            self.logger.info(f"  Rotation (quat): w={result['rotation_quat']['w']:.4f}, x={result['rotation_quat']['x']:.4f}, y={result['rotation_quat']['y']:.4f}, z={result['rotation_quat']['z']:.4f}")
+            self.logger.info(f"  Rotation (euler from quat): {result['rotation_euler_from_quat']}")
+        if result['rotation_euler']:
+            self.logger.info(f"  Rotation (euler): {result['rotation_euler']}")
+        self.logger.info(f"  Scale: {result['scale']}")
+        self.logger.info(f"  XformOps count: {len(result['xform_ops'])}")
+        for i, op in enumerate(result['xform_ops']):
+            self.logger.info(f"    Op {i}: {op['name']} ({op['type']}) = {op['value']}")
+        
+        return result
+    
+    def set_prim_transform(self, prim_path, translation=None, rotation_deg=None, rotation_quat=None, scale=None, clear_existing=False):
+        """
+        Set transform (translation, rotation, scale) of a prim.
+        
+        Args:
+            prim_path: Path to the prim (e.g., "/World/Gate")
+            translation: [x, y, z] translation (meters)
+            rotation_deg: [x, y, z] rotation in degrees (euler angles)
+            rotation_quat: [w, x, y, z] rotation as quaternion (if provided, overrides rotation_deg)
+            scale: [x, y, z] scale
+            clear_existing: If True, clear all existing xform ops before setting new ones
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        prim = self.stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            self.logger.warning(f"Prim at {prim_path} is not valid")
+            return False
+        
+        if not prim.IsA(UsdGeom.Xformable):
+            self.logger.warning(f"Prim at {prim_path} is not Xformable")
+            return False
+        
+        xformable = UsdGeom.Xformable(prim)
+        
+        if clear_existing:
+            xformable.ClearXformOpOrder()
+            self.logger.info(f"Cleared existing xform ops for {prim_path}")
+        
+        # Apply transformations in order: scale -> rotate -> translate
+        if scale is not None:
+            scale_op = xformable.AddScaleOp(UsdGeom.XformOp.PrecisionDouble)
+            scale_op.Set(Gf.Vec3d(scale[0], scale[1], scale[2]))
+            self.logger.info(f"Set scale: {scale}")
+        
+        if rotation_quat is not None:
+            # Use quaternion rotation
+            rotate_op = xformable.AddOrientOp(UsdGeom.XformOp.PrecisionDouble)
+            quat = Gf.Quatd(rotation_quat[0], rotation_quat[1], rotation_quat[2], rotation_quat[3])  # w, x, y, z
+            rotate_op.Set(quat)
+            self.logger.info(f"Set rotation (quat): w={rotation_quat[0]:.4f}, x={rotation_quat[1]:.4f}, y={rotation_quat[2]:.4f}, z={rotation_quat[3]:.4f}")
+        elif rotation_deg is not None:
+            # Use euler angle rotation
+            rotate_op = xformable.AddRotateXYZOp(UsdGeom.XformOp.PrecisionDouble)
+            rotate_op.Set(Gf.Vec3d(rotation_deg[0], rotation_deg[1], rotation_deg[2]))
+            self.logger.info(f"Set rotation (euler): {rotation_deg}°")
+        
+        if translation is not None:
+            translate_op = xformable.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble)
+            translate_op.Set(Gf.Vec3d(translation[0], translation[1], translation[2]))
+            self.logger.info(f"Set translation: {translation}")
+        
+        self.logger.info(f"Transform set successfully for {prim_path}")
+        return True
+    
+    def set_prim_transform_from_yaw(self, prim_path, translation=None, yaw_deg=None, yaw_rad=None, clear_existing=False):
+        """
+        Set transform with Z-axis rotation (yaw) only.
+        Convenience method for 2D transformations.
+        
+        Args:
+            prim_path: Path to the prim (e.g., "/World/Gate")
+            translation: [x, y, z] translation (meters)
+            yaw_deg: Yaw angle in degrees (Z-axis rotation)
+            yaw_rad: Yaw angle in radians (Z-axis rotation, overrides yaw_deg if provided)
+            clear_existing: If True, clear all existing xform ops before setting new ones
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        # Convert yaw to quaternion
+        if yaw_rad is not None:
+            yaw = yaw_rad
+        elif yaw_deg is not None:
+            yaw = np.radians(yaw_deg)
+        else:
+            yaw = 0.0
+        
+        # Create quaternion for Z-axis rotation
+        half_yaw = yaw / 2.0
+        rotation_quat = [
+            np.cos(half_yaw),   # w
+            0.0,                # x
+            0.0,                # y
+            np.sin(half_yaw)    # z
+        ]
+        
+        self.logger.info(f"Setting transform with yaw: {np.degrees(yaw):.2f}° ({yaw:.4f} rad)")
+        
+        return self.set_prim_transform(
+            prim_path=prim_path,
+            translation=translation,
+            rotation_quat=rotation_quat,
+            clear_existing=clear_existing
+        )
+    
+    # ===================== Object Creation Methods =====================
+    def _create_gate_object(self, cfg):
+        """
+        Create a gate object with two collinear walls (GateL and GateR) on Y-axis.
+        The gap between them allows the robot to pass through.
+        
+        Simple version: Only apply scale and Y position to GateL and GateR.
+        No Gate prim transformations.
+        
+        Args:
+            cfg: Configuration dictionary
+        """
+        if self.start_pos is None or self.goal_pos is None:
+            raise RuntimeError("Start and goal positions must be set before creating gate")
+        
+        rng = np.random
+        start_pos = self.start_pos
+        goal_pos = self.goal_pos
+        
+        # Randomize gate parameters
+        wall_depth = rng.uniform(cfg["wall_depth_min"], cfg["wall_depth_max"])
+        gate_y_offset = rng.uniform(cfg["gate_y_offset_min"], cfg["gate_y_offset_max"])
+        gap = rng.uniform(cfg["gap_min"], cfg["gap_max"])
+        gate_location_t = rng.uniform(cfg["gate_location_min"], cfg["gate_location_max"])
+        
+        # Gate wall scale: [wall_depth (x), map_size (y), wall_height (z)]
+        gate_y_scale = cfg["map_size"]  # Y-axis scale uses environment wall scale
+        gate_z_scale = cfg["wall_height"]  # Z-axis scale uses environment wall height
+        gate_scale = np.array([wall_depth, gate_y_scale, gate_z_scale])
+        gate_color = np.array(cfg["gate_color"])
+        
+        # Calculate GateL and GateR Y positions
+        # GateL: -Y direction by -(gate_y_scale + gap)/2 + gate_y_offset
+        # GateR: +Y direction by +(gate_y_scale + gap)/2 + gate_y_offset
+        gate_separation_L = -(gate_y_scale + gap) / 2.0 + gate_y_offset
+        gate_separation_R = (gate_y_scale + gap) / 2.0 + gate_y_offset
+        
+        # ===== Calculate Gate prim transformation (for manual xform application) =====
+        # Calculate start-to-goal vector and line direction
+        start_to_goal = goal_pos - start_pos
+        line_length = np.linalg.norm(start_to_goal)
+        line_direction = start_to_goal / line_length if line_length > 0 else np.array([1.0, 0.0])
+        
+        # Calculate gate position along start-goal line (0.2 ~ 0.8)
+        gate_pos_2d = start_pos + gate_location_t * start_to_goal
+        
+        # Calculate rotation: Y-axis should be perpendicular to start-goal line
+        # Line yaw angle
+        line_yaw = np.arctan2(line_direction[1], line_direction[0])
+        # Gate Y-axis should be perpendicular: subtract 90 degrees
+        gate_yaw = line_yaw - np.pi / 2.0
+        
+        # Convert to degrees for easier reading
+        line_yaw_deg = np.degrees(line_yaw)
+        gate_yaw_deg = np.degrees(gate_yaw)
+        
+        # Step 1: Create empty Gate prim (Xform) and setup xformOps with initial values
+        # This is equivalent to creating a prim in GUI - it will have translate and rotate ops
+        gate_prim_path = "/World/Gate"
+        gate_xform_prim = UsdGeom.Xform.Define(self.stage, gate_prim_path)
+        
+        # Setup xformOps (like GUI does) with initial values at origin
+        gate_xform = UsdGeom.Xformable(gate_xform_prim)
+        gate_xform.ClearXformOpOrder()
+        
+        # Add translate op (will be modified later)
+        gate_translate_op = gate_xform.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble, "")
+        gate_translate_op.Set(Gf.Vec3d(0.0, 0.0, 0.0))  # Initial: origin
+        
+        # Add rotateXYZ op (will be modified later) - this is what GUI uses
+        gate_rotate_op = gate_xform.AddRotateXYZOp(UsdGeom.XformOp.PrecisionDouble, "")
+        gate_rotate_op.Set(Gf.Vec3d(0.0, 0.0, 0.0))  # Initial: no rotation
+        
+        # Step 2: Create GateL and GateR with scale and Y position only
+        gateL_path = f"{gate_prim_path}/GateL"
+        gateR_path = f"{gate_prim_path}/GateR"
+        
+        # Create GateL with scale and Y position
+        gateL = self.world.scene.add(FixedCuboid(
+            prim_path=gateL_path,
+            name="gate_left",
+            position=np.array([0.0, gate_separation_L, 0.0]),  # X=0, Y=negative, Z=0
+            scale=gate_scale,
+            color=gate_color
+        ))
+        
+        # Create GateR with scale and Y position
+        gateR = self.world.scene.add(FixedCuboid(
+            prim_path=gateR_path,
+            name="gate_right",
+            position=np.array([0.0, gate_separation_R, 0.0]),  # X=0, Y=positive, Z=0
+            scale=gate_scale,
+            color=gate_color
+        ))
+        
+        # Apply Collider preset to GateL and GateR
+        gateL_prim = self.stage.GetPrimAtPath(gateL_path)
+        gateR_prim = self.stage.GetPrimAtPath(gateR_path)
+        
+        if gateL_prim.IsValid():
+            UsdPhysics.CollisionAPI.Apply(gateL_prim)
+        if gateR_prim.IsValid():
+            UsdPhysics.CollisionAPI.Apply(gateR_prim)
+        
+        # Store gate properties in config for logging
+        self.config["gate_wall_depth"] = wall_depth
+        self.config["gate_y_offset"] = gate_y_offset
+        self.config["gate_gap"] = gap
+        self.config["gate_location_t"] = gate_location_t
+        self.config["gate_pos"] = gate_pos_2d.tolist()
+        self.config["gate_yaw"] = gate_yaw
+        
+        self.logger.info(f"Gate created (simple version - no Gate prim transformations):")
+        self.logger.info(f"  Wall depth (X-scale): {wall_depth:.2f} m")
+        self.logger.info(f"  Y-axis scale: {gate_y_scale:.2f} m (matches environment)")
+        self.logger.info(f"  Z-axis scale: {gate_z_scale:.2f} m (matches environment)")
+        self.logger.info(f"  Gap: {gap:.2f} m")
+        self.logger.info(f"  Y offset: {gate_y_offset:.2f} m")
+        self.logger.info(f"  GateL position (local): [0.0, {gate_separation_L:.2f}, 0.0]")
+        self.logger.info(f"  GateR position (local): [0.0, {gate_separation_R:.2f}, 0.0]")
+        self.logger.info(f"")
+        self.logger.info(f"===== Gate Prim Xform Values (for manual application) =====")
+        self.logger.info(f"  Start position: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
+        self.logger.info(f"  Goal position: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
+        self.logger.info(f"  Start->Goal line angle: {line_yaw_deg:.2f}° (radians: {line_yaw:.4f})")
+        self.logger.info(f"")
+        self.logger.info(f"  Gate XY Position: [{gate_pos_2d[0]:.4f}, {gate_pos_2d[1]:.4f}] (Z=0)")
+        self.logger.info(f"  Gate location_t: {gate_location_t:.2f} ({gate_location_t*100:.1f}% along start-goal line)")
+        self.logger.info(f"")
+        self.logger.info(f"  Gate Yaw Angle (degrees): {gate_yaw_deg:.2f}°")
+        self.logger.info(f"  Gate Yaw Angle (radians): {gate_yaw:.4f}")
+        self.logger.info(f"  (This is line_yaw - 90° = {line_yaw_deg:.2f}° - 90° = {gate_yaw_deg:.2f}°)")
+        self.logger.info(f"============================================================")
+        
+        # Create GUI button for applying transform
+        self.create_gate_transform_button()
+    
+    def apply_gate_transform(self):
+        """
+        Apply Gate prim transform by modifying existing xformOp values.
+        This is equivalent to manually editing values in GUI's Property panel.
+        
+        The xformOps are already created during gate creation, we just modify their values.
+        This method should be called after gate creation.
+        """
+        # Get stored gate transform values
+        if "gate_pos" not in self.config or "gate_yaw" not in self.config:
+            self.logger.error("Gate transform values not found. Create gate first.")
+            return False
+        
+        gate_pos = self.config["gate_pos"]  # [x, y]
+        gate_yaw_rad = self.config["gate_yaw"]  # radians
+        
+        # Convert yaw to degrees and add 90 degrees as requested
+        gate_yaw_deg = np.degrees(gate_yaw_rad) + 90.0
+        
+        # Normalize angle to [-180, 180] range
+        while gate_yaw_deg > 180:
+            gate_yaw_deg -= 360
+        while gate_yaw_deg < -180:
+            gate_yaw_deg += 360
+        
+        gate_prim_path = "/World/Gate"
+        
+        self.logger.info(f"Applying Gate transform (like GUI editing):")
+        self.logger.info(f"  Translation: [{gate_pos[0]:.4f}, {gate_pos[1]:.4f}, 0.0]")
+        self.logger.info(f"  Rotation Z: {gate_yaw_deg:.2f}° (original yaw + 90°)")
+        
+        try:
+            prim = self.stage.GetPrimAtPath(gate_prim_path)
+            if not prim.IsValid() or not prim.IsA(UsdGeom.Xformable):
+                self.logger.error(f"Gate prim at {gate_prim_path} is not valid or not Xformable")
+                return False
+            
+            xformable = UsdGeom.Xformable(prim)
+            xform_ops = xformable.GetOrderedXformOps()
+            
+            # Find and modify existing xformOps (like GUI does)
+            translate_op = None
+            rotate_op = None
+            
+            for op in xform_ops:
+                if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+                    translate_op = op
+                elif op.GetOpType() == UsdGeom.XformOp.TypeRotateXYZ:
+                    rotate_op = op
+            
+            # Modify translate op value (like typing in GUI Translate tab)
+            if translate_op:
+                translate_op.Set(Gf.Vec3d(gate_pos[0], gate_pos[1], 0.0))
+                self.logger.info(f"  ✓ Updated xformOp:translate")
+            else:
+                self.logger.warning(f"  ✗ translate op not found!")
+            
+            # Modify rotate op value (like typing in GUI Rotate tab)
+            if rotate_op:
+                rotate_op.Set(Gf.Vec3d(0.0, 0.0, gate_yaw_deg))
+                self.logger.info(f"  ✓ Updated xformOp:rotateXYZ")
+            else:
+                self.logger.warning(f"  ✗ rotateXYZ op not found!")
+            
+            if translate_op and rotate_op:
+                self.logger.info(f"Gate transform applied successfully!")
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to apply gate transform: {e}")
+            return False
+    
+    def create_gate_transform_button(self):
+        """
+        Create a GUI button to apply Gate transform.
+        The button will appear in a floating window.
+        """
+        if not hasattr(self, '_gate_button_window') or self._gate_button_window is None:
+            self._gate_button_window = ui.Window("Gate Transform Control", width=300, height=150)
+            
+            with self._gate_button_window.frame:
+                with ui.VStack(spacing=10):
+                    ui.Label("Gate Transform Control", alignment=ui.Alignment.CENTER)
+                    ui.Spacer(height=5)
+                    
+                    with ui.HStack(spacing=5):
+                        ui.Label("Status:", width=60)
+                        self._gate_status_label = ui.Label("Waiting...", word_wrap=True)
+                    
+                    ui.Spacer(height=5)
+                    
+                    def on_apply_transform():
+                        self.logger.info("Apply Transform button clicked!")
+                        success = self.apply_gate_transform()
+                        if success:
+                            self._gate_status_label.text = "Transform applied!"
+                        else:
+                            self._gate_status_label.text = "Failed to apply"
+                    
+                    ui.Button("Apply Gate Transform", clicked_fn=on_apply_transform, height=40)
+                    
+                    ui.Spacer(height=5)
+                    ui.Label("Click after GateL/GateR generation", alignment=ui.Alignment.CENTER, word_wrap=True)
+            
+            self.logger.info("Gate Transform Control window created")
+        else:
+            self.logger.info("Gate Transform Control window already exists")
 
     # ===================== Environment Setup =====================
     def setup_environment(self):
@@ -379,34 +968,11 @@ class SpotSimulation:
             color=wall_color
         ))
         
-        # 5. Create dynamic obstacle box (can be pushed by robot) - only if use_box is True
-        if cfg["use_box"]:
-            self.world.scene.add(DynamicCuboid(
-                prim_path="/World/ObstacleBox", name="obstacle_box",
-                position=box_pos, scale=box_scale, color=box_color,
-                mass=cfg["box_mass"], linear_velocity=np.array([0.0, 0.0, 0.0])
-            ))
-            
-            # 6. Apply physics material to box (friction and restitution)
-            box_prim = self.stage.GetPrimAtPath("/World/ObstacleBox")
-            if box_prim.IsValid():
-                physics_material_path = "/World/Materials/BoxPhysicsMaterial"
-                # Create physics material with friction properties
-                physics_material = UsdPhysics.MaterialAPI.Apply(
-                    self.stage.DefinePrim(physics_material_path, "Material")
-                )
-                physics_material.CreateStaticFrictionAttr().Set(cfg["box_friction_static"])
-                physics_material.CreateDynamicFrictionAttr().Set(cfg["box_friction_dynamic"])
-                physics_material.CreateRestitutionAttr().Set(cfg["box_restitution"])
-                
-                # Bind physics material to box collider
-                collider = UsdPhysics.CollisionAPI.Get(self.stage, "/World/ObstacleBox")
-                if collider:
-                    collider.GetPrim().CreateRelationship("physics:material").SetTargets(
-                        [Sdf.Path(physics_material_path)]
-                    )
+        # 5. Create dynamic object (can be pushed by robot) - only if use_object is True
+        if cfg["use_object"]:
+            self._create_object(cfg, box_pos, box_scale, box_color)
         else:
-            self.logger.info("Box spawning disabled (use_box=False)")
+            self.logger.info("Object spawning disabled (use_object=False)")
         
         # 7. Create start marker (red sphere) - visual only, no physics
         start_sphere = UsdGeom.Sphere.Define(self.stage, "/World/StartMarker")
@@ -678,21 +1244,28 @@ class SpotSimulation:
                 robot_rpy = self.quaternion_to_rpy(robot_quat)  # Convert to roll, pitch, yaw
                 cmd_vel = self.controller.get_command()  # Command velocity [vx, vy, yaw]
                 
-                # Get box position from stage (box is dynamic, so position can change)
-                # Only if box is enabled in configuration
+                # Get object position from stage (object is dynamic, so position can change)
+                # Only if object is enabled in configuration
                 l1_distance = 0.0
-                if self.config.get("use_box", True):
-                    box_prim = self.stage.GetPrimAtPath("/World/ObstacleBox")
-                    if box_prim.IsValid():
-                        # Get world transform of the box
-                        box_xform = UsdGeom.Xformable(box_prim)
-                        box_transform = box_xform.ComputeLocalToWorldTransform(0)  # Get transform at time 0
-                        box_pos_world = box_transform.ExtractTranslation()
-                        box_pos = np.array([box_pos_world[0], box_pos_world[1], box_pos_world[2]])
-                        
-                        # Calculate L1 distance (Manhattan distance) between box and goal
-                        goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
-                        l1_distance = np.sum(np.abs(box_pos[:2] - goal_pos_2d))
+                object_type = self.config.get("object_type", "box")
+                if self.config.get("use_object", True):
+                    if object_type == "gate":
+                        # Gate is static, no distance tracking needed
+                        pass
+                    else:
+                        # Dynamic objects (box, sphere)
+                        object_path = self._get_object_prim_path()
+                        object_prim = self.stage.GetPrimAtPath(object_path)
+                        if object_prim.IsValid():
+                            # Get world transform of the object
+                            object_xform = UsdGeom.Xformable(object_prim)
+                            object_transform = object_xform.ComputeLocalToWorldTransform(0)  # Get transform at time 0
+                            object_pos_world = object_transform.ExtractTranslation()
+                            object_pos = np.array([object_pos_world[0], object_pos_world[1], object_pos_world[2]])
+                            
+                            # Calculate L1 distance (Manhattan distance) between object and goal
+                            goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
+                            l1_distance = np.sum(np.abs(object_pos[:2] - goal_pos_2d))
                 
                 # Log at DEBUG level: detailed robot state
                 self.logger.debug(
@@ -700,10 +1273,10 @@ class SpotSimulation:
                     f"RPY: [{np.degrees(robot_rpy[0]):.2f}, {np.degrees(robot_rpy[1]):.2f}, {np.degrees(robot_rpy[2]):.2f}]°, "
                     f"Cmd vel: [vx={cmd_vel[0]:.2f}, vy={cmd_vel[1]:.2f}, yaw={cmd_vel[2]:.2f}]"
                 )
-                # Log at INFO level: distance between box and goal (only if box exists)
-                if self.config.get("use_box", True):
+                # Log at INFO level: distance between object and goal (only for dynamic objects)
+                if self.config.get("use_object", True) and object_type != "gate":
                     self.logger.info(
-                        f"Box <-> Goal L1 distance: {l1_distance:.2f} m"
+                        f"{object_type.capitalize()} <-> Goal L1 distance: {l1_distance:.2f} m"
                     )
         
         # Robot control: apply commands to robot
