@@ -200,13 +200,14 @@ class SpotSimulation:
         """
         Create experiment directory structure and initialize CSV file.
         Directory structure:
-            YYMMDD_HHMMSS-Experiment_Name/
-                config.json
-                data.csv
-                terminal.log
-                camera/
-                    ego/
-                    top/
+            expr_data/
+                YYMMDD_HHMMSS-Experiment_Name/
+                    config.json
+                    data.csv
+                    terminal.log
+                    camera/
+                        ego/
+                        top/
         """
         # Create timestamp string in YYMMDD_HHMMSS format
         now = datetime.now()
@@ -214,7 +215,13 @@ class SpotSimulation:
         
         # Create experiment directory name
         dir_name = f"{timestamp}-{self.experiment_name}"
-        self.experiment_dir = Path(dir_name)
+        
+        # Create expr_data directory if it doesn't exist
+        expr_data_dir = Path("expr_data")
+        expr_data_dir.mkdir(exist_ok=True)
+        
+        # Create experiment directory inside expr_data
+        self.experiment_dir = expr_data_dir / dir_name
         # Note: experiment_start_time will be set when first keyboard command is received
         
         # Create directory structure
