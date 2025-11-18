@@ -1,0 +1,1 @@
+timestamp,frame_num,robot_pos_x,robot_pos_y,robot_pos_z,robot_orient_w,robot_orient_x,robot_orient_y,robot_orient_z,object_pos_x,object_pos_y,object_pos_z,object_orient_w,object_orient_x,object_orient_y,object_orient_z,l1_distance_to_goal

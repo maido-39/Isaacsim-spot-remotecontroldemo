@@ -1,0 +1,429 @@
+2025-11-18 22:04:14 - SpotSimulation - INFO - ✓ Terminal logging to file: 251118_220414-NULL/terminal.log
+2025-11-18 22:04:14 - SpotSimulation - INFO - Configuration saved: 251118_220414-NULL/config.json
+2025-11-18 22:04:14 - SpotSimulation - INFO - CSV file initialized: 251118_220414-NULL/data.csv
+2025-11-18 22:04:14 - SpotSimulation - INFO - Opening robot ego-view viewport...
+2025-11-18 22:04:14 - SpotSimulation - INFO - ✓ Robot ego-view viewport opened: 1280×800
+2025-11-18 22:04:14 - SpotSimulation - INFO - ✓ Top camera set as default viewport camera
+2025-11-18 22:04:14 - SpotSimulation - INFO - ✓ Ego camera render product initialized: 1280×800
+2025-11-18 22:04:14 - SpotSimulation - INFO - ✓ Top camera render product initialized: 1600×1600
+2025-11-18 22:04:14 - SpotSimulation - INFO - Setup complete
+2025-11-18 22:04:14 - SpotSimulation - INFO - Starting simulation...
+2025-11-18 22:04:14 - SpotSimulation - INFO - Controls: i/k (x), j/l (y), u/o (yaw), ESC (quit)
+2025-11-18 22:04:14 - SpotSimulation - INFO - Spot initialized
+2025-11-18 22:04:15 - SpotSimulation - DEBUG - Robot pos: [-2.06, 1.45, 0.27], RPY: [-1.79, 4.99, -41.33]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:15 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:15 - SpotSimulation - DEBUG - Robot pos: [-2.03, 1.43, 0.49], RPY: [-2.01, 13.31, -43.56]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:15 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:16 - SpotSimulation - DEBUG - Robot pos: [-2.01, 1.40, 0.63], RPY: [2.21, 18.49, -45.18]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:16 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:16 - SpotSimulation - DEBUG - Robot pos: [-1.99, 1.38, 0.67], RPY: [7.82, 22.94, -46.95]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:16 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:16 - SpotSimulation - DEBUG - Robot pos: [-1.97, 1.35, 0.62], RPY: [12.12, 27.23, -48.11]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:16 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:17 - SpotSimulation - DEBUG - Robot pos: [-1.92, 1.32, 0.55], RPY: [-0.31, 18.16, -51.01]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:17 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:17 - SpotSimulation - DEBUG - Robot pos: [-1.88, 1.29, 0.50], RPY: [-0.52, 7.50, -48.16]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:17 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:18 - SpotSimulation - DEBUG - Robot pos: [-1.86, 1.26, 0.50], RPY: [-1.74, 5.05, -48.26]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:18 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:18 - SpotSimulation - DEBUG - Robot pos: [-1.85, 1.23, 0.50], RPY: [-2.14, 2.28, -48.74]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:18 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:19 - SpotSimulation - DEBUG - Robot pos: [-1.84, 1.22, 0.49], RPY: [-2.02, -0.57, -49.20]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:19 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:19 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.21, 0.49], RPY: [-1.05, -0.18, -49.57]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:19 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:19 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.21, 0.48], RPY: [-0.67, 0.42, -49.84]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:19 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:20 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.20, 0.48], RPY: [-0.49, 0.62, -50.09]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:20 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:20 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.20, 0.48], RPY: [-0.34, 0.64, -50.35]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:20 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:21 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.49], RPY: [-0.21, 0.64, -50.59]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:21 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:21 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.49], RPY: [-0.11, 0.64, -50.82]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:21 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:21 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.49], RPY: [-0.03, 0.65, -51.03]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:21 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:22 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.02, 0.67, -51.24]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:22 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:22 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.06, 0.68, -51.44]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:22 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:23 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.09, 0.69, -51.63]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:23 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:23 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.11, 0.70, -51.81]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:23 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:24 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.12, 0.71, -51.99]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:24 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:24 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.13, 0.72, -52.17]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:24 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:24 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.14, 0.72, -52.34]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:24 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:25 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.14, 0.73, -52.50]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:25 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:25 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.19, 0.48], RPY: [0.14, 0.73, -52.67]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:25 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:26 - SpotSimulation - INFO - First keyboard command received - starting data saving
+2025-11-18 22:04:26 - SpotSimulation - INFO - Experiment data saving started
+2025-11-18 22:04:26 - SpotSimulation - DEBUG - ✓ Image saved: frame0-0.001-ego.jpg
+2025-11-18 22:04:26 - SpotSimulation - DEBUG - ✓ Image saved: frame0-0.001-top.jpg
+2025-11-18 22:04:26 - SpotSimulation - DEBUG - Robot pos: [-1.83, 1.18, 0.48], RPY: [0.18, 0.71, -52.84]°, Cmd vel: [vx=0.40, vy=0.00, yaw=0.00]
+2025-11-18 22:04:26 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:26 - SpotSimulation - DEBUG - ✓ Image saved: frame1-0.450-ego.jpg
+2025-11-18 22:04:26 - SpotSimulation - DEBUG - ✓ Image saved: frame1-0.450-top.jpg
+2025-11-18 22:04:26 - SpotSimulation - DEBUG - Robot pos: [-1.82, 1.17, 0.48], RPY: [0.96, 1.58, -52.36]°, Cmd vel: [vx=0.90, vy=0.00, yaw=0.60]
+2025-11-18 22:04:26 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:26 - SpotSimulation - DEBUG - ✓ Image saved: frame2-0.880-ego.jpg
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - ✓ Image saved: frame2-0.880-top.jpg
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - Robot pos: [-1.80, 1.14, 0.50], RPY: [1.68, 0.93, -48.16]°, Cmd vel: [vx=1.40, vy=0.00, yaw=1.60]
+2025-11-18 22:04:27 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - ✓ Image saved: frame3-1.321-ego.jpg
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - ✓ Image saved: frame3-1.321-top.jpg
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - Robot pos: [-1.75, 1.09, 0.52], RPY: [2.61, -1.25, -40.54]°, Cmd vel: [vx=1.90, vy=0.00, yaw=2.00]
+2025-11-18 22:04:27 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - ✓ Image saved: frame4-1.739-ego.jpg
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - ✓ Image saved: frame4-1.739-top.jpg
+2025-11-18 22:04:27 - SpotSimulation - DEBUG - Robot pos: [-1.70, 1.03, 0.52], RPY: [3.26, -1.96, -30.43]°, Cmd vel: [vx=2.00, vy=0.00, yaw=2.00]
+2025-11-18 22:04:27 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:28 - SpotSimulation - DEBUG - ✓ Image saved: frame5-2.167-ego.jpg
+2025-11-18 22:04:28 - SpotSimulation - DEBUG - ✓ Image saved: frame5-2.167-top.jpg
+2025-11-18 22:04:28 - SpotSimulation - DEBUG - Robot pos: [-1.62, 0.97, 0.51], RPY: [0.06, -2.01, -20.64]°, Cmd vel: [vx=2.00, vy=0.00, yaw=2.00]
+2025-11-18 22:04:28 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:28 - SpotSimulation - DEBUG - ✓ Image saved: frame6-2.586-ego.jpg
+2025-11-18 22:04:28 - SpotSimulation - DEBUG - ✓ Image saved: frame6-2.586-top.jpg
+2025-11-18 22:04:28 - SpotSimulation - DEBUG - Robot pos: [-1.50, 0.94, 0.50], RPY: [-2.15, -1.84, -10.22]°, Cmd vel: [vx=2.00, vy=0.00, yaw=2.00]
+2025-11-18 22:04:28 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - ✓ Image saved: frame7-2.993-ego.jpg
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - ✓ Image saved: frame7-2.993-top.jpg
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - Robot pos: [-1.35, 0.92, 0.49], RPY: [-1.92, 2.27, -1.13]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.72]
+2025-11-18 22:04:29 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - ✓ Image saved: frame8-3.426-ego.jpg
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - ✓ Image saved: frame8-3.426-top.jpg
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - Robot pos: [-1.18, 0.92, 0.48], RPY: [-3.69, 1.20, 6.06]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.06]
+2025-11-18 22:04:29 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - ✓ Image saved: frame9-3.844-ego.jpg
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - ✓ Image saved: frame9-3.844-top.jpg
+2025-11-18 22:04:29 - SpotSimulation - DEBUG - Robot pos: [-1.00, 0.95, 0.49], RPY: [-2.81, 1.69, 9.14]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.41]
+2025-11-18 22:04:29 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:30 - SpotSimulation - DEBUG - ✓ Image saved: frame10-4.257-ego.jpg
+2025-11-18 22:04:30 - SpotSimulation - DEBUG - ✓ Image saved: frame10-4.257-top.jpg
+2025-11-18 22:04:30 - SpotSimulation - DEBUG - Robot pos: [-0.82, 0.99, 0.50], RPY: [-1.61, -1.06, 11.61]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.18]
+2025-11-18 22:04:30 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:30 - SpotSimulation - DEBUG - ✓ Image saved: frame11-4.713-ego.jpg
+2025-11-18 22:04:30 - SpotSimulation - DEBUG - ✓ Image saved: frame11-4.713-top.jpg
+2025-11-18 22:04:30 - SpotSimulation - DEBUG - Robot pos: [-0.63, 1.05, 0.50], RPY: [-0.45, -2.30, 13.39]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.01]
+2025-11-18 22:04:30 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:31 - SpotSimulation - DEBUG - ✓ Image saved: frame12-5.126-ego.jpg
+2025-11-18 22:04:31 - SpotSimulation - DEBUG - ✓ Image saved: frame12-5.126-top.jpg
+2025-11-18 22:04:31 - SpotSimulation - DEBUG - Robot pos: [-0.44, 1.10, 0.51], RPY: [-0.63, -0.31, 13.98]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:31 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:31 - SpotSimulation - DEBUG - ✓ Image saved: frame13-5.532-ego.jpg
+2025-11-18 22:04:31 - SpotSimulation - DEBUG - ✓ Image saved: frame13-5.532-top.jpg
+2025-11-18 22:04:31 - SpotSimulation - DEBUG - Robot pos: [-0.26, 1.14, 0.51], RPY: [-0.42, -0.87, 13.83]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:31 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - ✓ Image saved: frame14-5.952-ego.jpg
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - ✓ Image saved: frame14-5.952-top.jpg
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - Robot pos: [-0.06, 1.19, 0.52], RPY: [-0.51, 0.21, 13.53]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:32 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - ✓ Image saved: frame15-6.376-ego.jpg
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - ✓ Image saved: frame15-6.376-top.jpg
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - Robot pos: [0.14, 1.24, 0.51], RPY: [-0.39, -0.03, 13.67]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:32 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - ✓ Image saved: frame16-6.820-ego.jpg
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - ✓ Image saved: frame16-6.820-top.jpg
+2025-11-18 22:04:32 - SpotSimulation - DEBUG - Robot pos: [0.33, 1.29, 0.50], RPY: [0.25, -1.43, 13.88]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:32 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:33 - SpotSimulation - DEBUG - ✓ Image saved: frame17-7.291-ego.jpg
+2025-11-18 22:04:33 - SpotSimulation - DEBUG - ✓ Image saved: frame17-7.291-top.jpg
+2025-11-18 22:04:33 - SpotSimulation - DEBUG - Robot pos: [0.52, 1.33, 0.50], RPY: [0.35, -0.21, 14.24]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.20]
+2025-11-18 22:04:33 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:33 - SpotSimulation - DEBUG - ✓ Image saved: frame18-7.743-ego.jpg
+2025-11-18 22:04:33 - SpotSimulation - DEBUG - ✓ Image saved: frame18-7.743-top.jpg
+2025-11-18 22:04:33 - SpotSimulation - DEBUG - Robot pos: [0.71, 1.38, 0.50], RPY: [0.97, 0.20, 15.28]°, Cmd vel: [vx=2.00, vy=0.00, yaw=1.20]
+2025-11-18 22:04:33 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:34 - SpotSimulation - DEBUG - ✓ Image saved: frame19-8.190-ego.jpg
+2025-11-18 22:04:34 - SpotSimulation - DEBUG - ✓ Image saved: frame19-8.190-top.jpg
+2025-11-18 22:04:34 - SpotSimulation - DEBUG - Robot pos: [0.90, 1.43, 0.50], RPY: [0.53, -1.89, 18.71]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.18]
+2025-11-18 22:04:34 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:34 - SpotSimulation - DEBUG - ✓ Image saved: frame20-8.620-ego.jpg
+2025-11-18 22:04:34 - SpotSimulation - DEBUG - ✓ Image saved: frame20-8.620-top.jpg
+2025-11-18 22:04:34 - SpotSimulation - DEBUG - Robot pos: [1.09, 1.49, 0.51], RPY: [-0.35, -0.80, 20.83]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.01]
+2025-11-18 22:04:34 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:35 - SpotSimulation - DEBUG - ✓ Image saved: frame21-9.052-ego.jpg
+2025-11-18 22:04:35 - SpotSimulation - DEBUG - ✓ Image saved: frame21-9.052-top.jpg
+2025-11-18 22:04:35 - SpotSimulation - DEBUG - Robot pos: [1.27, 1.55, 0.50], RPY: [0.13, -1.19, 21.73]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:35 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:35 - SpotSimulation - DEBUG - ✓ Image saved: frame22-9.483-ego.jpg
+2025-11-18 22:04:35 - SpotSimulation - DEBUG - ✓ Image saved: frame22-9.483-top.jpg
+2025-11-18 22:04:35 - SpotSimulation - DEBUG - Robot pos: [1.44, 1.63, 0.49], RPY: [0.25, -2.57, 22.16]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-0.40]
+2025-11-18 22:04:35 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - ✓ Image saved: frame23-9.915-ego.jpg
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - ✓ Image saved: frame23-9.915-top.jpg
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - Robot pos: [1.62, 1.71, 0.51], RPY: [-0.74, -2.33, 20.53]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-1.40]
+2025-11-18 22:04:36 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - ✓ Image saved: frame24-10.333-ego.jpg
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - ✓ Image saved: frame24-10.333-top.jpg
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - Robot pos: [1.81, 1.78, 0.51], RPY: [-1.95, -1.21, 14.87]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-2.00]
+2025-11-18 22:04:36 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - ✓ Image saved: frame25-10.776-ego.jpg
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - ✓ Image saved: frame25-10.776-top.jpg
+2025-11-18 22:04:36 - SpotSimulation - DEBUG - Robot pos: [2.01, 1.83, 0.50], RPY: [-0.76, 1.09, 7.68]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-2.00]
+2025-11-18 22:04:36 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:37 - SpotSimulation - DEBUG - ✓ Image saved: frame26-11.208-ego.jpg
+2025-11-18 22:04:37 - SpotSimulation - DEBUG - ✓ Image saved: frame26-11.208-top.jpg
+2025-11-18 22:04:37 - SpotSimulation - DEBUG - Robot pos: [2.21, 1.86, 0.49], RPY: [-0.25, 0.38, -1.74]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-2.00]
+2025-11-18 22:04:37 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:37 - SpotSimulation - DEBUG - ✓ Image saved: frame27-11.656-ego.jpg
+2025-11-18 22:04:37 - SpotSimulation - DEBUG - ✓ Image saved: frame27-11.656-top.jpg
+2025-11-18 22:04:37 - SpotSimulation - DEBUG - Robot pos: [2.40, 1.86, 0.48], RPY: [-0.10, -1.14, -10.97]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-2.00]
+2025-11-18 22:04:37 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:38 - SpotSimulation - DEBUG - ✓ Image saved: frame28-12.096-ego.jpg
+2025-11-18 22:04:38 - SpotSimulation - DEBUG - ✓ Image saved: frame28-12.096-top.jpg
+2025-11-18 22:04:38 - SpotSimulation - DEBUG - Robot pos: [2.58, 1.81, 0.49], RPY: [-1.64, -1.89, -20.21]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-2.00]
+2025-11-18 22:04:38 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:38 - SpotSimulation - DEBUG - ✓ Image saved: frame29-12.541-ego.jpg
+2025-11-18 22:04:38 - SpotSimulation - DEBUG - ✓ Image saved: frame29-12.541-top.jpg
+2025-11-18 22:04:38 - SpotSimulation - DEBUG - Robot pos: [2.76, 1.73, 0.51], RPY: [-0.31, -1.85, -28.12]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-0.26]
+2025-11-18 22:04:38 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:39 - SpotSimulation - DEBUG - ✓ Image saved: frame30-12.990-ego.jpg
+2025-11-18 22:04:39 - SpotSimulation - DEBUG - ✓ Image saved: frame30-12.990-top.jpg
+2025-11-18 22:04:39 - SpotSimulation - DEBUG - Robot pos: [2.94, 1.63, 0.51], RPY: [0.43, -0.08, -31.71]°, Cmd vel: [vx=0.34, vy=0.00, yaw=0.27]
+2025-11-18 22:04:39 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:39 - SpotSimulation - DEBUG - ✓ Image saved: frame31-13.428-ego.jpg
+2025-11-18 22:04:39 - SpotSimulation - DEBUG - ✓ Image saved: frame31-13.428-top.jpg
+2025-11-18 22:04:39 - SpotSimulation - DEBUG - Robot pos: [3.10, 1.52, 0.50], RPY: [1.32, 0.87, -32.62]°, Cmd vel: [vx=0.06, vy=0.00, yaw=0.02]
+2025-11-18 22:04:39 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:39 - SpotSimulation - DEBUG - ✓ Image saved: frame32-13.882-ego.jpg
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - ✓ Image saved: frame32-13.882-top.jpg
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - Robot pos: [3.22, 1.42, 0.49], RPY: [0.21, 2.40, -32.46]°, Cmd vel: [vx=0.01, vy=0.00, yaw=0.00]
+2025-11-18 22:04:40 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - ✓ Image saved: frame33-14.346-ego.jpg
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - ✓ Image saved: frame33-14.346-top.jpg
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - Robot pos: [3.30, 1.33, 0.47], RPY: [-1.05, 2.18, -32.85]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:40 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - ✓ Image saved: frame34-14.792-ego.jpg
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - ✓ Image saved: frame34-14.792-top.jpg
+2025-11-18 22:04:40 - SpotSimulation - DEBUG - Robot pos: [3.37, 1.28, 0.47], RPY: [-3.18, -0.98, -33.29]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.20]
+2025-11-18 22:04:40 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:41 - SpotSimulation - DEBUG - ✓ Image saved: frame35-15.247-ego.jpg
+2025-11-18 22:04:41 - SpotSimulation - DEBUG - ✓ Image saved: frame35-15.247-top.jpg
+2025-11-18 22:04:41 - SpotSimulation - DEBUG - Robot pos: [3.42, 1.26, 0.47], RPY: [-2.38, -1.58, -30.96]°, Cmd vel: [vx=0.00, vy=0.00, yaw=1.20]
+2025-11-18 22:04:41 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:41 - SpotSimulation - DEBUG - ✓ Image saved: frame36-15.697-ego.jpg
+2025-11-18 22:04:41 - SpotSimulation - DEBUG - ✓ Image saved: frame36-15.697-top.jpg
+2025-11-18 22:04:41 - SpotSimulation - DEBUG - Robot pos: [3.47, 1.26, 0.46], RPY: [-3.34, 1.48, -26.45]°, Cmd vel: [vx=0.00, vy=0.00, yaw=-0.04]
+2025-11-18 22:04:41 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:42 - SpotSimulation - DEBUG - ✓ Image saved: frame37-16.160-ego.jpg
+2025-11-18 22:04:42 - SpotSimulation - DEBUG - ✓ Image saved: frame37-16.160-top.jpg
+2025-11-18 22:04:42 - SpotSimulation - DEBUG - Robot pos: [3.50, 1.26, 0.46], RPY: [-0.71, 1.32, -27.08]°, Cmd vel: [vx=0.00, vy=0.00, yaw=-1.04]
+2025-11-18 22:04:42 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:42 - SpotSimulation - DEBUG - ✓ Image saved: frame38-16.610-ego.jpg
+2025-11-18 22:04:42 - SpotSimulation - DEBUG - ✓ Image saved: frame38-16.610-top.jpg
+2025-11-18 22:04:42 - SpotSimulation - DEBUG - Robot pos: [3.50, 1.27, 0.49], RPY: [-0.57, 0.34, -33.65]°, Cmd vel: [vx=0.00, vy=0.00, yaw=-1.11]
+2025-11-18 22:04:42 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:43 - SpotSimulation - DEBUG - ✓ Image saved: frame39-17.056-ego.jpg
+2025-11-18 22:04:43 - SpotSimulation - DEBUG - ✓ Image saved: frame39-17.056-top.jpg
+2025-11-18 22:04:43 - SpotSimulation - DEBUG - Robot pos: [3.50, 1.28, 0.50], RPY: [-0.90, -1.76, -40.10]°, Cmd vel: [vx=0.00, vy=0.00, yaw=-0.09]
+2025-11-18 22:04:43 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:43 - SpotSimulation - DEBUG - ✓ Image saved: frame40-17.504-ego.jpg
+2025-11-18 22:04:43 - SpotSimulation - DEBUG - ✓ Image saved: frame40-17.504-top.jpg
+2025-11-18 22:04:43 - SpotSimulation - DEBUG - Robot pos: [3.50, 1.28, 0.51], RPY: [-1.64, -1.19, -40.86]°, Cmd vel: [vx=0.00, vy=0.20, yaw=-0.01]
+2025-11-18 22:04:43 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:44 - SpotSimulation - DEBUG - ✓ Image saved: frame41-17.955-ego.jpg
+2025-11-18 22:04:44 - SpotSimulation - DEBUG - ✓ Image saved: frame41-17.955-top.jpg
+2025-11-18 22:04:44 - SpotSimulation - DEBUG - Robot pos: [3.51, 1.28, 0.51], RPY: [-1.05, -1.21, -40.73]°, Cmd vel: [vx=0.00, vy=0.70, yaw=0.00]
+2025-11-18 22:04:44 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:44 - SpotSimulation - DEBUG - ✓ Image saved: frame42-18.429-ego.jpg
+2025-11-18 22:04:44 - SpotSimulation - DEBUG - ✓ Image saved: frame42-18.429-top.jpg
+2025-11-18 22:04:44 - SpotSimulation - DEBUG - Robot pos: [3.52, 1.30, 0.52], RPY: [-0.18, -1.78, -41.18]°, Cmd vel: [vx=0.00, vy=1.20, yaw=-1.00]
+2025-11-18 22:04:44 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:44 - SpotSimulation - DEBUG - ✓ Image saved: frame43-18.883-ego.jpg
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - ✓ Image saved: frame43-18.883-top.jpg
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - Robot pos: [3.54, 1.33, 0.51], RPY: [-0.59, -0.85, -45.79]°, Cmd vel: [vx=0.00, vy=1.70, yaw=-2.00]
+2025-11-18 22:04:45 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - ✓ Image saved: frame44-19.359-ego.jpg
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - ✓ Image saved: frame44-19.359-top.jpg
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - Robot pos: [3.59, 1.36, 0.49], RPY: [-2.01, 0.07, -54.14]°, Cmd vel: [vx=0.00, vy=2.00, yaw=-2.00]
+2025-11-18 22:04:45 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - ✓ Image saved: frame45-19.834-ego.jpg
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - ✓ Image saved: frame45-19.834-top.jpg
+2025-11-18 22:04:45 - SpotSimulation - DEBUG - Robot pos: [3.69, 1.41, 0.49], RPY: [-4.58, 0.66, -65.50]°, Cmd vel: [vx=0.00, vy=2.00, yaw=-2.00]
+2025-11-18 22:04:45 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:46 - SpotSimulation - DEBUG - ✓ Image saved: frame46-20.293-ego.jpg
+2025-11-18 22:04:46 - SpotSimulation - DEBUG - ✓ Image saved: frame46-20.293-top.jpg
+2025-11-18 22:04:46 - SpotSimulation - DEBUG - Robot pos: [3.81, 1.45, 0.49], RPY: [-1.36, 1.12, -74.04]°, Cmd vel: [vx=0.00, vy=1.40, yaw=-1.20]
+2025-11-18 22:04:46 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:46 - SpotSimulation - DEBUG - ✓ Image saved: frame47-20.786-ego.jpg
+2025-11-18 22:04:46 - SpotSimulation - DEBUG - ✓ Image saved: frame47-20.786-top.jpg
+2025-11-18 22:04:46 - SpotSimulation - DEBUG - Robot pos: [3.93, 1.47, 0.49], RPY: [-0.19, 1.97, -82.02]°, Cmd vel: [vx=0.00, vy=0.24, yaw=-0.09]
+2025-11-18 22:04:46 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:47 - SpotSimulation - DEBUG - ✓ Image saved: frame48-21.244-ego.jpg
+2025-11-18 22:04:47 - SpotSimulation - DEBUG - ✓ Image saved: frame48-21.244-top.jpg
+2025-11-18 22:04:47 - SpotSimulation - DEBUG - Robot pos: [4.04, 1.50, 0.50], RPY: [1.01, 0.05, -85.73]°, Cmd vel: [vx=0.00, vy=0.04, yaw=-0.01]
+2025-11-18 22:04:47 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:47 - SpotSimulation - DEBUG - ✓ Image saved: frame49-21.691-ego.jpg
+2025-11-18 22:04:47 - SpotSimulation - DEBUG - ✓ Image saved: frame49-21.691-top.jpg
+2025-11-18 22:04:47 - SpotSimulation - DEBUG - Robot pos: [4.13, 1.53, 0.51], RPY: [0.21, -1.46, -86.73]°, Cmd vel: [vx=0.00, vy=0.01, yaw=0.00]
+2025-11-18 22:04:47 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:48 - SpotSimulation - DEBUG - ✓ Image saved: frame50-22.161-ego.jpg
+2025-11-18 22:04:48 - SpotSimulation - DEBUG - ✓ Image saved: frame50-22.161-top.jpg
+2025-11-18 22:04:48 - SpotSimulation - DEBUG - Robot pos: [4.20, 1.55, 0.50], RPY: [2.23, -1.93, -88.02]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:48 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:48 - SpotSimulation - DEBUG - ✓ Image saved: frame51-22.625-ego.jpg
+2025-11-18 22:04:48 - SpotSimulation - DEBUG - ✓ Image saved: frame51-22.625-top.jpg
+2025-11-18 22:04:48 - SpotSimulation - DEBUG - Robot pos: [4.24, 1.56, 0.49], RPY: [1.79, -0.94, -88.51]°, Cmd vel: [vx=0.00, vy=-0.40, yaw=0.00]
+2025-11-18 22:04:48 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:49 - SpotSimulation - DEBUG - ✓ Image saved: frame52-23.094-ego.jpg
+2025-11-18 22:04:49 - SpotSimulation - DEBUG - ✓ Image saved: frame52-23.094-top.jpg
+2025-11-18 22:04:49 - SpotSimulation - DEBUG - Robot pos: [4.25, 1.57, 0.50], RPY: [0.79, 0.27, -88.41]°, Cmd vel: [vx=0.00, vy=-0.90, yaw=0.00]
+2025-11-18 22:04:49 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:49 - SpotSimulation - DEBUG - ✓ Image saved: frame53-23.557-ego.jpg
+2025-11-18 22:04:49 - SpotSimulation - DEBUG - ✓ Image saved: frame53-23.557-top.jpg
+2025-11-18 22:04:49 - SpotSimulation - DEBUG - Robot pos: [4.23, 1.56, 0.50], RPY: [-1.45, 0.31, -88.43]°, Cmd vel: [vx=0.00, vy=-1.40, yaw=0.00]
+2025-11-18 22:04:49 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:50 - SpotSimulation - DEBUG - ✓ Image saved: frame54-24.020-ego.jpg
+2025-11-18 22:04:50 - SpotSimulation - DEBUG - ✓ Image saved: frame54-24.020-top.jpg
+2025-11-18 22:04:50 - SpotSimulation - DEBUG - Robot pos: [4.20, 1.54, 0.50], RPY: [-2.49, 1.06, -88.60]°, Cmd vel: [vx=0.00, vy=-1.90, yaw=0.00]
+2025-11-18 22:04:50 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:50 - SpotSimulation - DEBUG - ✓ Image saved: frame55-24.468-ego.jpg
+2025-11-18 22:04:50 - SpotSimulation - DEBUG - ✓ Image saved: frame55-24.468-top.jpg
+2025-11-18 22:04:50 - SpotSimulation - DEBUG - Robot pos: [4.15, 1.49, 0.52], RPY: [-1.78, 2.35, -88.13]°, Cmd vel: [vx=0.00, vy=-2.00, yaw=0.00]
+2025-11-18 22:04:50 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:51 - SpotSimulation - DEBUG - ✓ Image saved: frame56-24.930-ego.jpg
+2025-11-18 22:04:51 - SpotSimulation - DEBUG - ✓ Image saved: frame56-24.930-top.jpg
+2025-11-18 22:04:51 - SpotSimulation - DEBUG - Robot pos: [4.07, 1.43, 0.51], RPY: [1.72, 3.70, -86.93]°, Cmd vel: [vx=0.00, vy=-2.00, yaw=0.00]
+2025-11-18 22:04:51 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:51 - SpotSimulation - DEBUG - ✓ Image saved: frame57-25.405-ego.jpg
+2025-11-18 22:04:51 - SpotSimulation - DEBUG - ✓ Image saved: frame57-25.405-top.jpg
+2025-11-18 22:04:51 - SpotSimulation - DEBUG - Robot pos: [3.96, 1.40, 0.52], RPY: [1.38, 3.08, -87.30]°, Cmd vel: [vx=0.00, vy=-0.48, yaw=0.00]
+2025-11-18 22:04:51 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:51 - SpotSimulation - DEBUG - ✓ Image saved: frame58-25.880-ego.jpg
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - ✓ Image saved: frame58-25.880-top.jpg
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - Robot pos: [3.85, 1.37, 0.51], RPY: [0.85, 1.13, -87.52]°, Cmd vel: [vx=0.00, vy=-0.08, yaw=0.00]
+2025-11-18 22:04:52 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - ✓ Image saved: frame59-26.331-ego.jpg
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - ✓ Image saved: frame59-26.331-top.jpg
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - Robot pos: [3.78, 1.36, 0.50], RPY: [-1.15, -3.57, -87.15]°, Cmd vel: [vx=0.00, vy=-0.01, yaw=0.00]
+2025-11-18 22:04:52 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - ✓ Image saved: frame60-26.795-ego.jpg
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - ✓ Image saved: frame60-26.795-top.jpg
+2025-11-18 22:04:52 - SpotSimulation - DEBUG - Robot pos: [3.73, 1.37, 0.49], RPY: [-1.50, -1.99, -87.77]°, Cmd vel: [vx=0.10, vy=-0.00, yaw=0.00]
+2025-11-18 22:04:52 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:53 - SpotSimulation - DEBUG - ✓ Image saved: frame61-27.247-ego.jpg
+2025-11-18 22:04:53 - SpotSimulation - DEBUG - ✓ Image saved: frame61-27.247-top.jpg
+2025-11-18 22:04:53 - SpotSimulation - DEBUG - Robot pos: [3.71, 1.36, 0.48], RPY: [-1.30, -0.70, -87.98]°, Cmd vel: [vx=0.60, vy=0.00, yaw=0.00]
+2025-11-18 22:04:53 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:53 - SpotSimulation - DEBUG - ✓ Image saved: frame62-27.693-ego.jpg
+2025-11-18 22:04:53 - SpotSimulation - DEBUG - ✓ Image saved: frame62-27.693-top.jpg
+2025-11-18 22:04:53 - SpotSimulation - DEBUG - Robot pos: [3.70, 1.34, 0.49], RPY: [-0.02, 0.66, -87.51]°, Cmd vel: [vx=1.10, vy=0.00, yaw=0.00]
+2025-11-18 22:04:53 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:54 - SpotSimulation - DEBUG - ✓ Image saved: frame63-28.170-ego.jpg
+2025-11-18 22:04:54 - SpotSimulation - DEBUG - ✓ Image saved: frame63-28.170-top.jpg
+2025-11-18 22:04:54 - SpotSimulation - DEBUG - Robot pos: [3.68, 1.29, 0.50], RPY: [0.33, 0.64, -88.21]°, Cmd vel: [vx=1.60, vy=0.00, yaw=-0.14]
+2025-11-18 22:04:54 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.92 m
+2025-11-18 22:04:54 - SpotSimulation - DEBUG - ✓ Image saved: frame64-28.637-ego.jpg
+2025-11-18 22:04:54 - SpotSimulation - DEBUG - ✓ Image saved: frame64-28.637-top.jpg
+2025-11-18 22:04:54 - SpotSimulation - DEBUG - Robot pos: [3.66, 1.22, 0.51], RPY: [0.78, 0.96, -88.94]°, Cmd vel: [vx=2.00, vy=0.00, yaw=-0.01]
+2025-11-18 22:04:54 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.91 m
+2025-11-18 22:04:55 - SpotSimulation - DEBUG - ✓ Image saved: frame65-29.100-ego.jpg
+2025-11-18 22:04:55 - SpotSimulation - DEBUG - ✓ Image saved: frame65-29.100-top.jpg
+2025-11-18 22:04:55 - SpotSimulation - DEBUG - Robot pos: [3.64, 1.12, 0.51], RPY: [1.49, 0.04, -88.89]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:55 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.86 m
+2025-11-18 22:04:55 - SpotSimulation - DEBUG - ✓ Image saved: frame66-29.572-ego.jpg
+2025-11-18 22:04:55 - SpotSimulation - DEBUG - ✓ Image saved: frame66-29.572-top.jpg
+2025-11-18 22:04:55 - SpotSimulation - DEBUG - Robot pos: [3.64, 1.02, 0.50], RPY: [0.88, -1.06, -88.78]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:55 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.77 m
+2025-11-18 22:04:56 - SpotSimulation - DEBUG - ✓ Image saved: frame67-30.033-ego.jpg
+2025-11-18 22:04:56 - SpotSimulation - DEBUG - ✓ Image saved: frame67-30.033-top.jpg
+2025-11-18 22:04:56 - SpotSimulation - DEBUG - Robot pos: [3.64, 0.90, 0.50], RPY: [1.07, -1.10, -89.32]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:56 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.64 m
+2025-11-18 22:04:56 - SpotSimulation - DEBUG - ✓ Image saved: frame68-30.492-ego.jpg
+2025-11-18 22:04:56 - SpotSimulation - DEBUG - ✓ Image saved: frame68-30.492-top.jpg
+2025-11-18 22:04:56 - SpotSimulation - DEBUG - Robot pos: [3.65, 0.76, 0.51], RPY: [1.28, -0.48, -89.20]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:56 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.50 m
+2025-11-18 22:04:57 - SpotSimulation - DEBUG - ✓ Image saved: frame69-30.969-ego.jpg
+2025-11-18 22:04:57 - SpotSimulation - DEBUG - ✓ Image saved: frame69-30.969-top.jpg
+2025-11-18 22:04:57 - SpotSimulation - DEBUG - Robot pos: [3.65, 0.62, 0.51], RPY: [0.77, -0.47, -89.22]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:57 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.34 m
+2025-11-18 22:04:57 - SpotSimulation - DEBUG - ✓ Image saved: frame70-31.478-ego.jpg
+2025-11-18 22:04:57 - SpotSimulation - DEBUG - ✓ Image saved: frame70-31.478-top.jpg
+2025-11-18 22:04:57 - SpotSimulation - DEBUG - Robot pos: [3.64, 0.47, 0.51], RPY: [1.14, 0.28, -88.72]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:57 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.16 m
+2025-11-18 22:04:58 - SpotSimulation - DEBUG - ✓ Image saved: frame71-31.961-ego.jpg
+2025-11-18 22:04:58 - SpotSimulation - DEBUG - ✓ Image saved: frame71-31.961-top.jpg
+2025-11-18 22:04:58 - SpotSimulation - DEBUG - Robot pos: [3.63, 0.32, 0.50], RPY: [0.84, -0.49, -88.81]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:58 - SpotSimulation - INFO - Box <-> Goal L1 distance: 3.03 m
+2025-11-18 22:04:58 - SpotSimulation - DEBUG - ✓ Image saved: frame72-32.438-ego.jpg
+2025-11-18 22:04:58 - SpotSimulation - DEBUG - ✓ Image saved: frame72-32.438-top.jpg
+2025-11-18 22:04:58 - SpotSimulation - DEBUG - Robot pos: [3.63, 0.16, 0.50], RPY: [0.98, -1.62, -88.68]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:58 - SpotSimulation - INFO - Box <-> Goal L1 distance: 2.89 m
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - ✓ Image saved: frame73-32.915-ego.jpg
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - ✓ Image saved: frame73-32.915-top.jpg
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - Robot pos: [3.63, 0.00, 0.51], RPY: [1.25, -0.45, -88.71]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:59 - SpotSimulation - INFO - Box <-> Goal L1 distance: 2.72 m
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - ✓ Image saved: frame74-33.388-ego.jpg
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - ✓ Image saved: frame74-33.388-top.jpg
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - Robot pos: [3.63, -0.14, 0.51], RPY: [1.13, -0.38, -88.59]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:59 - SpotSimulation - INFO - Box <-> Goal L1 distance: 2.56 m
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - ✓ Image saved: frame75-33.858-ego.jpg
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - ✓ Image saved: frame75-33.858-top.jpg
+2025-11-18 22:04:59 - SpotSimulation - DEBUG - Robot pos: [3.61, -0.30, 0.50], RPY: [1.87, -0.13, -88.39]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:04:59 - SpotSimulation - INFO - Box <-> Goal L1 distance: 2.41 m
+2025-11-18 22:05:00 - SpotSimulation - DEBUG - ✓ Image saved: frame76-34.350-ego.jpg
+2025-11-18 22:05:00 - SpotSimulation - DEBUG - ✓ Image saved: frame76-34.350-top.jpg
+2025-11-18 22:05:00 - SpotSimulation - DEBUG - Robot pos: [3.60, -0.44, 0.50], RPY: [1.35, -0.82, -88.10]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:00 - SpotSimulation - INFO - Box <-> Goal L1 distance: 2.28 m
+2025-11-18 22:05:00 - SpotSimulation - DEBUG - ✓ Image saved: frame77-34.841-ego.jpg
+2025-11-18 22:05:00 - SpotSimulation - DEBUG - ✓ Image saved: frame77-34.841-top.jpg
+2025-11-18 22:05:00 - SpotSimulation - DEBUG - Robot pos: [3.60, -0.59, 0.50], RPY: [1.49, -1.27, -88.26]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:00 - SpotSimulation - INFO - Box <-> Goal L1 distance: 2.13 m
+2025-11-18 22:05:01 - SpotSimulation - DEBUG - ✓ Image saved: frame78-35.326-ego.jpg
+2025-11-18 22:05:01 - SpotSimulation - DEBUG - ✓ Image saved: frame78-35.326-top.jpg
+2025-11-18 22:05:01 - SpotSimulation - DEBUG - Robot pos: [3.59, -0.74, 0.51], RPY: [1.93, 0.14, -88.24]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:01 - SpotSimulation - INFO - Box <-> Goal L1 distance: 1.97 m
+2025-11-18 22:05:01 - SpotSimulation - DEBUG - ✓ Image saved: frame79-35.803-ego.jpg
+2025-11-18 22:05:01 - SpotSimulation - DEBUG - ✓ Image saved: frame79-35.803-top.jpg
+2025-11-18 22:05:01 - SpotSimulation - DEBUG - Robot pos: [3.58, -0.89, 0.51], RPY: [1.56, -0.18, -88.19]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:01 - SpotSimulation - INFO - Box <-> Goal L1 distance: 1.81 m
+2025-11-18 22:05:02 - SpotSimulation - DEBUG - ✓ Image saved: frame80-36.270-ego.jpg
+2025-11-18 22:05:02 - SpotSimulation - DEBUG - ✓ Image saved: frame80-36.270-top.jpg
+2025-11-18 22:05:02 - SpotSimulation - DEBUG - Robot pos: [3.55, -1.04, 0.50], RPY: [1.63, -0.16, -88.09]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:02 - SpotSimulation - INFO - Box <-> Goal L1 distance: 1.67 m
+2025-11-18 22:05:02 - SpotSimulation - DEBUG - ✓ Image saved: frame81-36.757-ego.jpg
+2025-11-18 22:05:02 - SpotSimulation - DEBUG - ✓ Image saved: frame81-36.757-top.jpg
+2025-11-18 22:05:02 - SpotSimulation - DEBUG - Robot pos: [3.54, -1.18, 0.49], RPY: [0.98, -0.77, -88.04]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:02 - SpotSimulation - INFO - Box <-> Goal L1 distance: 1.53 m
+2025-11-18 22:05:03 - SpotSimulation - DEBUG - ✓ Image saved: frame82-37.237-ego.jpg
+2025-11-18 22:05:03 - SpotSimulation - DEBUG - ✓ Image saved: frame82-37.237-top.jpg
+2025-11-18 22:05:03 - SpotSimulation - DEBUG - Robot pos: [3.53, -1.33, 0.49], RPY: [0.92, -0.84, -88.00]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:03 - SpotSimulation - INFO - Box <-> Goal L1 distance: 1.37 m
+2025-11-18 22:05:03 - SpotSimulation - DEBUG - ✓ Image saved: frame83-37.704-ego.jpg
+2025-11-18 22:05:03 - SpotSimulation - DEBUG - ✓ Image saved: frame83-37.704-top.jpg
+2025-11-18 22:05:03 - SpotSimulation - DEBUG - Robot pos: [3.52, -1.49, 0.51], RPY: [1.13, 0.04, -87.78]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:03 - SpotSimulation - INFO - Box <-> Goal L1 distance: 1.21 m
+2025-11-18 22:05:04 - SpotSimulation - DEBUG - ✓ Image saved: frame84-38.190-ego.jpg
+2025-11-18 22:05:04 - SpotSimulation - DEBUG - ✓ Image saved: frame84-38.190-top.jpg
+2025-11-18 22:05:04 - SpotSimulation - DEBUG - Robot pos: [3.50, -1.64, 0.51], RPY: [0.96, -0.27, -87.79]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:04 - SpotSimulation - INFO - Box <-> Goal L1 distance: 1.04 m
+2025-11-18 22:05:04 - SpotSimulation - INFO - Goal marker color changed to green
+2025-11-18 22:05:04 - SpotSimulation - INFO - Goal hemisphere color changed to green
+2025-11-18 22:05:04 - SpotSimulation - INFO - Task completed! Distance to goal: 0.880m < 1.0m
+2025-11-18 22:05:04 - SpotSimulation - INFO - Logging stopped
+2025-11-18 22:05:04 - SpotSimulation - DEBUG - Robot pos: [3.48, -1.79, 0.50], RPY: [1.52, 0.09, -87.88]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:04 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.88 m
+2025-11-18 22:05:05 - SpotSimulation - DEBUG - Robot pos: [3.47, -1.94, 0.50], RPY: [0.55, -0.60, -88.38]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:05 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.75 m
+2025-11-18 22:05:05 - SpotSimulation - DEBUG - Robot pos: [3.46, -2.10, 0.49], RPY: [0.41, -1.43, -88.24]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:05 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.58 m
+2025-11-18 22:05:06 - SpotSimulation - DEBUG - Robot pos: [3.45, -2.26, 0.50], RPY: [0.11, -0.52, -87.96]°, Cmd vel: [vx=2.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:06 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.41 m
+2025-11-18 22:05:06 - SpotSimulation - DEBUG - Robot pos: [3.44, -2.41, 0.50], RPY: [-0.40, 0.05, -88.04]°, Cmd vel: [vx=0.34, vy=0.00, yaw=0.00]
+2025-11-18 22:05:06 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.26 m
+2025-11-18 22:05:07 - SpotSimulation - DEBUG - Robot pos: [3.45, -2.53, 0.51], RPY: [-2.86, 1.64, -88.20]°, Cmd vel: [vx=0.06, vy=0.00, yaw=0.00]
+2025-11-18 22:05:07 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.17 m
+2025-11-18 22:05:07 - SpotSimulation - DEBUG - Robot pos: [3.46, -2.64, 0.50], RPY: [-1.99, 1.84, -88.29]°, Cmd vel: [vx=0.01, vy=0.00, yaw=0.00]
+2025-11-18 22:05:07 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.11 m
+2025-11-18 22:05:08 - SpotSimulation - DEBUG - Robot pos: [3.47, -2.70, 0.50], RPY: [-1.23, 0.22, -88.10]°, Cmd vel: [vx=0.00, vy=0.00, yaw=0.00]
+2025-11-18 22:05:08 - SpotSimulation - INFO - Box <-> Goal L1 distance: 0.09 m
+2025-11-18 22:05:08 - SpotSimulation - INFO - CSV file closed with 85 frames saved
+2025-11-18 22:05:08 - SpotSimulation - DEBUG - Error cleaning up camera annotators: 'HydraTexture' object has no attribute 'split'
+2025-11-18 22:05:08 - SpotSimulation - INFO - Cleanup complete

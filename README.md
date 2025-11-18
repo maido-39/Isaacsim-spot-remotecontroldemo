@@ -17,7 +17,9 @@ This project provides a complete simulation environment for the Spot robot with:
 - ⌨️ **Keyboard Controller**: Smooth acceleration/decay model for intuitive robot movement
 - 🎲 **Environment Randomization**: Configurable randomization of start/goal positions and obstacles
 - 📊 **Real-time Logging**: Detailed robot state logging (position, orientation, velocity)
-- 🎥 **Multiple Camera Views**: Top-down overview camera and robot ego-view camera
+- 💾 **Experiment Data Saving**: Automatic saving of experiment data (CSV + camera images + config)
+- 🎥 **RealSense D455 Camera**: Complete D455 camera system with RGB, depth, and stereo IR cameras
+- 📸 **Multiple Camera Views**: Top-down overview camera and robot ego-view camera
 - 📦 **Dynamic Obstacles**: Pushable boxes with configurable physics properties
 - 🔍 **Contact Sensors**: Example implementation of contact detection between objects
 
@@ -38,8 +40,10 @@ This project provides a complete simulation environment for the Spot robot with:
 
 2. **Install additional dependencies** (if not already installed):
    ```bash
-   pip install pygame numpy
+   pip install pygame numpy pandas matplotlib pillow
    ```
+   
+   **Note:** `pandas`, `matplotlib`, and `pillow` are only required for the analysis script (`analyze_experiment_data.py`). The main simulation only requires `pygame` and `numpy`.
 
 3. **Verify Isaac Sim installation**:
    ```bash
@@ -91,17 +95,146 @@ python quadruped_example.py
 
 ```
 .
-├── README.md                      # This file
-├── quadruped_example.py           # Main Spot robot simulation
-├── keyboard_controller.py         # Pygame-based keyboard controller
-├── contact_sensor-example.py      # Contact sensor demo
-├── example_config.json            # Example configuration file
+├── README.md                          # This file
+├── quadruped_example.py               # Main Spot robot simulation
+├── keyboard_controller.py             # Pygame-based keyboard controller
+├── analyze_experiment_data.py         # Experiment data analysis script
+├── plot_experiment.py                 # Refined experiment plotting tool
+├── example_analysis.py                # Additional analysis examples
+├── contact_sensor-example.py          # Contact sensor demo
+├── example_config.json                # Example configuration file
 ├── custom_robots/
-│   └── spot.py                    # Custom Spot robot implementation
-├── CONTACT_SENSOR_GUIDE.md        # Contact sensor documentation
-├── ENVIRONMENT_PARAMS.md          # Environment parameter reference
-└── FIXES_APPLIED.md               # Fix documentation
+│   └── spot.py                        # Custom Spot robot implementation
+├── CONTACT_SENSOR_GUIDE.md            # Contact sensor documentation
+├── D455_CAMERA_GUIDE.md               # RealSense D455 camera guide
+├── CAMERA_UPGRADE_SUMMARY.md          # Camera upgrade technical summary
+├── ENVIRONMENT_PARAMS.md              # Environment parameter reference
+├── EXPERIMENT_DATA_GUIDE.md           # Experiment data saving guide
+├── EXPERIMENT_DATA_IMPLEMENTATION.md  # Data saving implementation details
+└── FIXES_APPLIED.md                   # Fix documentation
 ```
+
+## RealSense D455 Camera System
+
+The robot is equipped with an Intel RealSense D455 camera system mounted on its body. This provides:
+
+### Camera Components
+- **RGB Camera**: 1920x1080 color imaging (primary ego-view)
+- **Depth Camera**: Distance measurement for obstacle detection
+- **Left/Right IR Cameras**: Stereo infrared imaging with 95mm baseline
+
+### Camera Specifications
+- **Field of View**: ~69° horizontal
+- **Position**: 0.3m forward, 0.1m up from robot body center
+- **Orientation**: Forward-facing, aligned with robot
+- **Resolution**: Configurable (default: 1280x720 for performance)
+- **Frame Rate**: 30 FPS
+
+### Usage Modes
+
+#### Mode 1: Visualization Only (Default)
+The camera is automatically created and visible in the viewport. No additional setup required.
+
+#### Mode 2: With Data Capture
+To enable programmatic access to camera data:
+
+1. Edit `quadruped_example.py`, find the `setup()` method
+2. Uncomment this line:
+   ```python
+   self._initialize_d455_sensors()
+   ```
+3. Access camera data in your code:
+   ```python
+   data = sim.get_d455_data()
+   if data:
+       rgb_image = data['rgb']['rgba']
+       depth_map = data['depth']['distance_to_camera']
+       left_ir = data['left_ir']
+       right_ir = data['right_ir']
+   ```
+
+### Camera Hierarchy
+```
+/World/Spot/body/camera_mount/
+├── d455_rgb          # RGB camera (primary view)
+├── d455_depth        # Depth camera
+├── d455_left_ir      # Left infrared camera
+└── d455_right_ir     # Right infrared camera
+```
+
+### Documentation
+For detailed camera information, see:
+- **[D455_CAMERA_GUIDE.md](D455_CAMERA_GUIDE.md)**: Complete usage guide with examples
+- **[CAMERA_UPGRADE_SUMMARY.md](CAMERA_UPGRADE_SUMMARY.md)**: Technical implementation details
+
+## Experiment Data Saving
+
+The simulation automatically saves comprehensive experiment data for analysis and replay:
+
+### What Gets Saved
+
+1. **Configuration** (`config.json`): Actual values used in the experiment
+2. **Time-Series Data** (`data.csv`): Robot and object positions/orientations at 10Hz
+3. **Camera Images** (`camera/ego/` and `camera/top/`): JPEG images at 10Hz
+
+### Usage
+
+When you run the simulation, you'll be prompted for an experiment name:
+
+```bash
+python quadruped_example.py
+# Enter experiment name (press Enter for 'NULL'): my_test_run
+```
+
+Data is saved to: `YYMMDD_HHMMSS-Experiment_Name/`
+
+Example: `241118_153045-my_test_run/`
+
+### Analyzing Results
+
+**Option 1: Comprehensive Analysis Script**
+
+```bash
+python analyze_experiment_data.py 241118_153045-my_test_run
+```
+
+This will:
+- Print summary statistics (duration, speeds, distances)
+- Generate trajectory plots
+- Generate time-series plots (speed, distance, orientation)
+- Save plots to the experiment directory
+
+**Option 2: Refined Experiment Plot Tool (Recommended)**
+
+```bash
+python plot_experiment.py 241118_153045-my_test_run
+# Or just press Enter when prompted to use the latest experiment
+```
+
+This creates a refined visualization with:
+- Map plot with robot/object trajectories and orientations (with time gradient)
+- Command velocity subplot
+- L1 distance metric subplot
+- Automatic detection of latest experiment if no input provided
+
+### Data Format
+
+**CSV Columns:**
+- `timestamp`: Elapsed time since first keyboard command (seconds)
+- `frame_num`: Frame number
+- `robot_pos_x/y/z`: Robot position (meters)
+- `robot_orient_w/x/y/z`: Robot orientation (quaternion)
+- `object_pos_x/y/z`: Object position (meters)
+- `object_orient_w/x/y/z`: Object orientation (quaternion)
+- `l1_distance_to_goal`: L1 distance to goal (robot<->goal for gate, box<->goal for box)
+
+**Image Naming:**
+- Format: `frame{N}-{timestamp}-{camera_type}.jpg`
+- Example: `frame42-4.200-ego.jpg` (43rd frame at 4.2 seconds, ego-view)
+
+### Documentation
+- **[EXPERIMENT_DATA_GUIDE.md](EXPERIMENT_DATA_GUIDE.md)**: Complete usage guide
+- **[EXPERIMENT_DATA_IMPLEMENTATION.md](EXPERIMENT_DATA_IMPLEMENTATION.md)**: Technical details
 
 ## Configuration
 
@@ -209,6 +342,10 @@ See `CONTACT_SENSOR_GUIDE.md` for detailed instructions.
 
 ## Documentation
 
+- **[EXPERIMENT_DATA_GUIDE.md](EXPERIMENT_DATA_GUIDE.md)**: Experiment data saving and analysis guide
+- **[EXPERIMENT_DATA_IMPLEMENTATION.md](EXPERIMENT_DATA_IMPLEMENTATION.md)**: Data saving technical details
+- **[D455_CAMERA_GUIDE.md](D455_CAMERA_GUIDE.md)**: RealSense D455 camera usage guide
+- **[CAMERA_UPGRADE_SUMMARY.md](CAMERA_UPGRADE_SUMMARY.md)**: Camera upgrade technical details
 - **[CONTACT_SENSOR_GUIDE.md](CONTACT_SENSOR_GUIDE.md)**: Guide for contact sensor implementation
 - **[ENVIRONMENT_PARAMS.md](ENVIRONMENT_PARAMS.md)**: Complete environment parameter reference
 - **[FIXES_APPLIED.md](FIXES_APPLIED.md)**: Documentation of fixes and improvements

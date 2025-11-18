@@ -25,6 +25,10 @@ import numpy as np
 import logging
 import sys
 import json
+import os
+import csv
+from datetime import datetime
+from pathlib import Path
 from pxr import Gf, UsdGeom, UsdPhysics, UsdShade, Sdf
 import omni
 from isaacsim.core.api import World
@@ -93,6 +97,10 @@ DEFAULT_CONFIG = {
     "decay_vy": 0.7,
     "decay_yaw": 0.6,
     "update_dt": 0.02,
+    
+    # Camera settings (RealSense D455 RGB specs)
+    "ego_camera_resolution": [1280, 800],  # Ego-view camera resolution [width, height] - 16:10
+    "top_camera_resolution": [1600, 1600],  # Top-down camera resolution [width, height]
 }
 
 
@@ -100,12 +108,13 @@ DEFAULT_CONFIG = {
 class SpotSimulation:
     """Main simulation class for Isaac Sim Spot robot control"""
 
-    def __init__(self, config_file=None, **config_overrides):
+    def __init__(self, config_file=None, experiment_name=None, **config_overrides):
         """
         Initialize simulation.
     
     Args:
             config_file: Path to JSON config file (optional)
+            experiment_name: Name of the experiment (optional, defaults to "NULL")
             **config_overrides: Override any config values
         """
         # Load configuration: start with defaults, then load from file if provided, then apply overrides
@@ -133,6 +142,17 @@ class SpotSimulation:
         self.goal_pos = None            # Goal position [x, y]
         self.robot_camera_path = None   # Path to robot ego-view camera
         self._gate_button_window = None # GUI window for gate transform control
+        self.task_in_progress = True    # Flag to track if task is in progress
+        
+        # Experiment data tracking
+        self.experiment_name = experiment_name if experiment_name else "NULL"
+        self.experiment_dir = None      # Path to experiment directory
+        self.csv_file = None            # CSV file handle
+        self.csv_writer = None          # CSV writer object
+        self.frame_counter = 0          # Frame counter for data logging
+        self.experiment_start_time = None  # Experiment start timestamp
+        self.data_saving_started = False   # Flag to track if data saving has started
+        self.first_command_received = False  # Flag to track first keyboard command
 
     def _setup_logging(self):
         """
@@ -147,13 +167,300 @@ class SpotSimulation:
             self.logger.handlers.clear()
         
         # Create console handler that outputs to stdout
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter(
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         ))
-        self.logger.addHandler(handler)
+        self.logger.addHandler(console_handler)
         self.logger.propagate = False  # Prevent messages from propagating to root logger
+    
+    def _add_file_logging(self, log_file_path):
+        """
+        Add file handler to save logs to terminal.log in experiment folder.
+        Called after experiment directory is created.
+        
+        Args:
+            log_file_path: Path to the log file
+        """
+        try:
+            # Create file handler
+            file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')
+            file_handler.setFormatter(logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            ))
+            self.logger.addHandler(file_handler)
+            self.logger.info(f"✓ Terminal logging to file: {log_file_path}")
+        except Exception as e:
+            self.logger.warning(f"Failed to add file logging: {e}")
+
+    # ===================== Experiment Data Management =====================
+    def _initialize_experiment_directory(self):
+        """
+        Create experiment directory structure and initialize CSV file.
+        Directory structure:
+            YYMMDD_HHMMSS-Experiment_Name/
+                config.json
+                data.csv
+                terminal.log
+                camera/
+                    ego/
+                    top/
+        """
+        # Create timestamp string in YYMMDD_HHMMSS format
+        now = datetime.now()
+        timestamp = now.strftime("%y%m%d_%H%M%S")
+        
+        # Create experiment directory name
+        dir_name = f"{timestamp}-{self.experiment_name}"
+        self.experiment_dir = Path(dir_name)
+        # Note: experiment_start_time will be set when first keyboard command is received
+        
+        # Create directory structure
+        try:
+            self.experiment_dir.mkdir(exist_ok=True)
+            (self.experiment_dir / "camera" / "ego").mkdir(parents=True, exist_ok=True)
+            (self.experiment_dir / "camera" / "top").mkdir(parents=True, exist_ok=True)
+            
+            self.logger.info(f"Experiment directory created: {self.experiment_dir}")
+            
+            # Add file logging to save terminal output to terminal.log
+            terminal_log_path = self.experiment_dir / "terminal.log"
+            self._add_file_logging(terminal_log_path)
+            
+            # Save configuration file (actual values used, not ranges)
+            self._save_config()
+            
+            # Initialize CSV file
+            csv_path = self.experiment_dir / "data.csv"
+            self.csv_file = open(csv_path, 'w', newline='')
+            self.csv_writer = csv.writer(self.csv_file)
+            
+            # Write CSV header
+            self.csv_writer.writerow([
+                'timestamp', 'frame_num',
+                'robot_pos_x', 'robot_pos_y', 'robot_pos_z',
+                'robot_orient_w', 'robot_orient_x', 'robot_orient_y', 'robot_orient_z',
+                'object_pos_x', 'object_pos_y', 'object_pos_z',
+                'object_orient_w', 'object_orient_x', 'object_orient_y', 'object_orient_z',
+                'l1_distance_to_goal'  # L1 norm: robot<->goal (gate) or box<->goal (box)
+            ])
+            self.csv_file.flush()
+            
+            self.logger.info(f"CSV file initialized: {csv_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create experiment directory: {e}")
+            raise
+    
+    def _save_config(self):
+        """
+        Save current configuration to config.json.
+        Saves the actual values used in the experiment (no random ranges).
+        """
+        if self.experiment_dir is None:
+            return
+        
+        try:
+            # Create a clean config dictionary with only the actual values used
+            # Remove range parameters that are only for randomization
+            clean_config = self.config.copy()
+            
+            # Remove randomization-specific keys
+            keys_to_remove = [
+                'box_scale_range', 'box_mass_range',
+                'box_line_distance_min', 'box_line_distance_max',
+                'wall_inset'
+            ]
+            for key in keys_to_remove:
+                clean_config.pop(key, None)
+            
+            config_path = self.experiment_dir / "config.json"
+            with open(config_path, 'w') as f:
+                json.dump(clean_config, f, indent=2)
+            
+            self.logger.info(f"Configuration saved: {config_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save configuration: {e}")
+    
+    def _initialize_camera_render_products(self):
+        """
+        Initialize render products and annotators for cameras once during setup.
+        This ensures consistency between viewport and captured images.
+        Called after camera setup and world reset.
+        """
+        try:
+            import omni.replicator.core as rep
+            
+            # Initialize render products dictionary and annotators
+            self.render_products = {}
+            self.rgb_annotators = {}
+            
+            # Setup ego camera render product
+            if hasattr(self, 'robot_camera_path') and self.robot_camera_path:
+                ego_res = tuple(self.config["ego_camera_resolution"])
+                self.render_products["ego"] = rep.create.render_product(
+                    self.robot_camera_path, 
+                    ego_res
+                )
+                self.rgb_annotators["ego"] = rep.AnnotatorRegistry.get_annotator("rgb")
+                self.rgb_annotators["ego"].attach([self.render_products["ego"]])
+                self.logger.info(f"✓ Ego camera render product initialized: {ego_res[0]}×{ego_res[1]}")
+            
+            # Setup top camera render product
+            if hasattr(self, 'camera_path') and self.camera_path:
+                top_res = tuple(self.config["top_camera_resolution"])
+                self.render_products["top"] = rep.create.render_product(
+                    self.camera_path, 
+                    top_res
+                )
+                self.rgb_annotators["top"] = rep.AnnotatorRegistry.get_annotator("rgb")
+                self.rgb_annotators["top"].attach([self.render_products["top"]])
+                self.logger.info(f"✓ Top camera render product initialized: {top_res[0]}×{top_res[1]}")
+            
+            self.camera_render_initialized = True
+            
+        except ImportError as e:
+            self.logger.warning(f"Replicator not available, camera capture disabled: {e}")
+            self.camera_render_initialized = False
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize camera render products: {e}")
+            self.camera_render_initialized = False
+    
+    def _save_camera_image(self, camera_path, camera_type, frame_num, timestamp_str):
+        """
+        Capture and save image directly from pre-initialized render products.
+        No image modification - saves raw data from annotator.
+        
+        Args:
+            camera_path: USD path to the camera (not used, kept for compatibility)
+            camera_type: "ego" or "top" (determines subfolder)
+            frame_num: Frame number
+            timestamp_str: Timestamp string for filename
+        """
+        # Check if render products are initialized
+        if not hasattr(self, 'camera_render_initialized') or not self.camera_render_initialized:
+            return
+        
+        # Check if this camera type has a render product
+        if camera_type not in self.render_products or camera_type not in self.rgb_annotators:
+            return
+        
+        try:
+            from PIL import Image
+            import numpy as np
+            
+            # Create filename and path
+            filename = f"frame{frame_num}-{timestamp_str}-{camera_type}.jpg"
+            image_path = self.experiment_dir / "camera" / camera_type / filename
+            
+            # Get data directly from annotator
+            rgb_data = self.rgb_annotators[camera_type].get_data()
+            
+            if rgb_data is None:
+                self.logger.debug(f"No data from {camera_type} annotator")
+                return
+            
+            # Convert to numpy array
+            image_array = np.asarray(rgb_data)
+            
+            # Check if we have valid image data
+            if image_array is None or image_array.size == 0:
+                self.logger.debug(f"Empty image data for {camera_type}")
+                return
+            
+            # Handle RGBA to RGB conversion if needed
+            if len(image_array.shape) == 3 and image_array.shape[2] == 4:
+                # Convert RGBA to RGB
+                image_array = image_array[:, :, :3]
+            
+            # Save image
+            Image.fromarray(image_array, mode='RGB').save(str(image_path), quality=95)
+            self.logger.debug(f"✓ Image saved: {filename}")
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to save {camera_type} camera image: {e}")
+    
+    def _save_camera_image_fallback(self, camera_path, camera_type, frame_num, timestamp_str):
+        """
+        Fallback method to capture camera image using viewport screenshot.
+        
+        Args:
+            camera_path: USD path to the camera
+            camera_type: "ego" or "top" (determines subfolder)
+            frame_num: Frame number
+            timestamp_str: Timestamp string for filename
+        """
+        try:
+            import omni.kit.viewport.utility as vp_utils
+            
+            filename = f"frame{frame_num}-{timestamp_str}-{camera_type}.jpg"
+            image_path = self.experiment_dir / "camera" / camera_type / filename
+            
+            # Get viewport
+            viewport = vp_utils.get_active_viewport()
+            if viewport:
+                # Try to temporarily set camera and capture
+                original_camera = viewport.get_active_camera()
+                viewport.set_active_camera(camera_path)
+                
+                # Wait a frame for the camera to update
+                # Then capture (this is a simplified approach)
+                # The actual implementation may need more sophisticated frame synchronization
+                
+                # Restore original camera
+                viewport.set_active_camera(original_camera)
+                
+                self.logger.debug(f"Fallback image capture attempted: {image_path}")
+            
+        except Exception as e:
+            self.logger.debug(f"Fallback image capture also failed: {e}")
+    
+    def _save_experiment_data(self, robot_pos, robot_quat, object_pos, object_quat, l1_distance):
+        """
+        Save experiment data to CSV and capture camera images.
+        
+        Args:
+            robot_pos: Robot position [x, y, z]
+            robot_quat: Robot orientation quaternion [w, x, y, z]
+            object_pos: Object position [x, y, z]
+            object_quat: Object orientation quaternion [w, x, y, z]
+            l1_distance: L1 distance to goal (robot<->goal for gate, box<->goal for box)
+        """
+        if self.csv_writer is None:
+            return
+        
+        try:
+            # Get current timestamp
+            elapsed = (datetime.now() - self.experiment_start_time).total_seconds()
+            timestamp_str = f"{elapsed:.3f}"
+            
+            # Write CSV row
+            self.csv_writer.writerow([
+                timestamp_str, self.frame_counter,
+                robot_pos[0], robot_pos[1], robot_pos[2],
+                robot_quat[0], robot_quat[1], robot_quat[2], robot_quat[3],
+                object_pos[0], object_pos[1], object_pos[2],
+                object_quat[0], object_quat[1], object_quat[2], object_quat[3],
+                l1_distance
+            ])
+            
+            # Flush every 10 frames to ensure data is written
+            if self.frame_counter % 10 == 0:
+                self.csv_file.flush()
+            
+            # Save camera images
+            if self.robot_camera_path:
+                self._save_camera_image(self.robot_camera_path, "ego", self.frame_counter, timestamp_str)
+            if hasattr(self, 'camera_path') and self.camera_path:
+                self._save_camera_image(self.camera_path, "top", self.frame_counter, timestamp_str)
+            
+            self.frame_counter += 1
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save experiment data: {e}")
 
     # ===================== Utility Functions =====================
     @staticmethod
@@ -990,34 +1297,37 @@ class SpotSimulation:
         goal_xform.ClearXformOpOrder()
         goal_xform.AddTranslateOp().Set(Gf.Vec3d(float(goal_pos[0]), float(goal_pos[1]), 0.0))
         
-        # 9. Create camera on root prim and set as default view
-        # Position: Z = +17m, Rotation: Z axis -90 degrees
-        camera_path = "/World/Camera"
-        camera = UsdGeom.Camera.Define(self.stage, camera_path)
+        # 9. Create top-down camera using generic camera creation function
+        # Position: 12m above origin, looking down
+        top_res = self.config["top_camera_resolution"]
         
-        # Set camera position: [0, 0, 17]
-        camera_xform = UsdGeom.Xformable(camera)
-        camera_xform.ClearXformOpOrder()
-        translate_op = camera_xform.AddTranslateOp()
-        translate_op.Set(Gf.Vec3d(0.0, 0.0, 45.0))
-        
-        # Set camera rotation: -90 degrees around Z axis
-        # Rotation around Z axis: -90 degrees = -π/2 radians
+        # Calculate quaternion for -90° rotation around Z axis
         rotation_z = -np.pi / 2.0
-        # Convert to quaternion for Z-axis rotation (use GfQuatf for camera)
         half_angle = rotation_z / 2.0
-        quat = Gf.Quatf(
+        rotation_quat = (
             float(np.cos(half_angle)),  # w
             0.0,                        # x
             0.0,                        # y
             float(np.sin(half_angle))   # z
         )
-        rotate_op = camera_xform.AddOrientOp()
-        rotate_op.Set(quat)
         
-        # Store camera path for later activation (viewport may not be ready yet)
-        self.camera_path = camera_path
-        self.logger.info(f"Camera created at {camera_path}")
+        camera_path = self._create_camera(
+            parent_path="/World",
+            camera_name="TopCamera",
+            translation=(0.0, 0.0, 20.0),  # 12m above origin
+            rotation_quat=rotation_quat,  # -90° around Z axis
+            focal_length=18.0,  # mm (for overhead view)
+            horizontal_aperture=18.0,  # mm (square aspect ratio)
+            resolution=top_res,
+            clipping_range=(0.1, 50.0)  # Appropriate for overhead view
+        )
+        
+        if camera_path:
+            self.camera_path = camera_path
+            self.logger.info(f"✓ Top camera created: {camera_path}")
+            self.logger.info(f"  Resolution: {top_res[0]}×{top_res[1]} pixels")
+        else:
+            self.logger.warning("Failed to create top camera")
         
         self.logger.info("Environment setup complete")
 
@@ -1086,136 +1396,172 @@ class SpotSimulation:
                 float(radius)  # Position at radius height so half sphere is above ground
             ))
             
+            # Store hemisphere path for later color change
+            self.goal_hemisphere_path = hemisphere_path
+            
             self.logger.info(f"Goal hemisphere created at [{self.goal_pos[0]:.2f}, {self.goal_pos[1]:.2f}] with diameter {diameter:.2f}m")
             
         except Exception as e:
             self.logger.warning(f"Failed to create goal hemisphere: {e}")
 
-    def _setup_robot_camera(self):
+    def _change_goal_color_to_green(self):
         """
-        Create ego-view camera attached to Spot robot body.
-        Creates a camera prim under /World/Spot/body with transformations, then adds camera under that prim.
-        Transformations: z +0.2m, x -0.4m, rotation x 90°, y 90°
-        Must be called after world reset when robot is fully initialized.
+        Change goal marker and hemisphere color from blue to green.
+        Called when task is complete (distance < 1m).
         """
         try:
-            # Attach camera to /World/Spot/body
-            body_path = "/World/Spot/body"
-            body_prim = self.stage.GetPrimAtPath(body_path)
-            if not body_prim.IsValid():
-                self.logger.warning(f"Robot body prim not found at {body_path}, cannot attach camera")
-                return
+            # Change goal marker color
+            goal_marker_path = "/World/GoalMarker"
+            goal_marker_prim = self.stage.GetPrimAtPath(goal_marker_path)
+            if goal_marker_prim.IsValid():
+                goal_sphere = UsdGeom.Sphere(goal_marker_prim)
+                goal_sphere.GetDisplayColorAttr().Set([Gf.Vec3f(0.0, 1.0, 0.0)])  # Green color
+                self.logger.info("Goal marker color changed to green")
             
-            # Create a prim for the camera with transformations
-            camera_prim_path = f"{body_path}/CameraPrim"
+            # Change goal hemisphere color
+            if hasattr(self, 'goal_hemisphere_path'):
+                hemisphere_prim = self.stage.GetPrimAtPath(self.goal_hemisphere_path)
+                if hemisphere_prim.IsValid():
+                    hemisphere_sphere = UsdGeom.Sphere(hemisphere_prim)
+                    hemisphere_sphere.GetDisplayColorAttr().Set([Gf.Vec3f(0.0, 1.0, 0.0)])  # Green color
+                    self.logger.info("Goal hemisphere color changed to green")
+        
+        except Exception as e:
+            self.logger.warning(f"Failed to change goal color: {e}")
+
+    def _create_camera(self, parent_path, camera_name, translation, rotation_quat, 
+                       focal_length, horizontal_aperture, resolution, 
+                       clipping_range=(0.01, 10000.0)):
+        """
+        General camera creation function with configurable parameters.
+        
+        Args:
+            parent_path: USD path of parent prim
+            camera_name: Name for the camera
+            translation: Translation tuple (x, y, z) in meters
+            rotation_quat: Rotation quaternion (w, x, y, z)
+            focal_length: Focal length in mm
+            horizontal_aperture: Horizontal aperture in mm
+            resolution: Resolution tuple (width, height)
+            clipping_range: Clipping range tuple (near, far) in meters
+            
+        Returns:
+            str: Camera USD path if successful, None otherwise
+        """
+        try:
+            # Create transform prim for camera
+            camera_prim_path = f"{parent_path}/{camera_name}_Prim"
             camera_prim = UsdGeom.Xform.Define(self.stage, camera_prim_path)
             
-            # Apply transformations to the camera prim
-            # Translation: (0, 0, 0) - no translation
-            # Rotation: Quaternion WXYZ (0.5, 0.5, -0.5, -0.5) to avoid gimbal lock
+            # Apply transformations
             camera_xform = UsdGeom.Xformable(camera_prim)
             camera_xform.ClearXformOpOrder()
             
-            # Add translation: (0, 0, 0)
+            # Add translation
             translate_op = camera_xform.AddTranslateOp()
-            translate_op.Set(Gf.Vec3f(0.0, 0.0, 0.0))
+            translate_op.Set(Gf.Vec3f(*translation))
             
-            # Add rotation: Quaternion WXYZ (0.5, 0.5, -0.5, -0.5)
-            quat = Gf.Quatf(0.5, 0.5, -0.5, -0.5)  # (w, x, y, z)
-            
-            # Add rotation operation
+            # Add rotation
             rotate_op = camera_xform.AddOrientOp()
-            rotate_op.Set(quat)
+            rotate_op.Set(Gf.Quatf(*rotation_quat))
             
-            # Create camera as child of the camera prim
-            camera_path = f"{camera_prim_path}/EgoCamera"
+            # Create camera
+            camera_path = f"{camera_prim_path}/{camera_name}"
             camera = UsdGeom.Camera.Define(self.stage, camera_path)
             
-            # Set focal length to 24.7mm
-            camera.GetFocalLengthAttr().Set(24.7)
+            # Calculate vertical aperture from resolution aspect ratio
+            aspect_ratio = resolution[1] / resolution[0]  # height / width
+            vertical_aperture = horizontal_aperture * aspect_ratio
             
-            self.logger.info(f"Ego-view camera created at {camera_path} (quaternion WXYZ=[0.5, 0.5, -0.5, -0.5], translation=[0,0,0], focal_length=24.7mm)")
+            # Set camera intrinsic parameters
+            camera.GetFocalLengthAttr().Set(focal_length)
+            camera.GetHorizontalApertureAttr().Set(horizontal_aperture)
+            camera.GetVerticalApertureAttr().Set(vertical_aperture)
+            camera.GetClippingRangeAttr().Set(Gf.Vec2f(*clipping_range))
             
-            # Store camera path for viewport creation
-            self.robot_camera_path = camera_path
+            return camera_path
             
         except Exception as e:
-            self.logger.warning(f"Failed to create robot camera: {e}")
+            self.logger.error(f"Failed to create camera {camera_name}: {e}")
+            return None
+    
+    def _setup_robot_camera(self):
+        """
+        Create ego-view camera attached to Spot robot body.
+        Uses generic camera creation function with specific parameters.
+        Must be called after world reset when robot is fully initialized.
+        """
+        try:
+            # Check if robot body exists
+            body_path = "/World/Spot/body"
+            body_prim = self.stage.GetPrimAtPath(body_path)
+            if not body_prim.IsValid():
+                self.logger.warning(f"Robot body prim not found at {body_path}")
+                return
+            
+            # Get camera configuration
+            ego_res = self.config["ego_camera_resolution"]
+            
+            # Create ego camera with RealSense D455 RGB specifications
+            # FOV: 90° H × 65° V, Resolution: 1280 × 800
+            camera_path = self._create_camera(
+                parent_path=body_path,
+                camera_name="EgoCamera",
+                translation=(0.3, 0.0, 0.2),  # Position relative to robot body
+                rotation_quat=(0.5, 0.5, -0.5, -0.5),  # RPY (90°, -90°, 0°)
+                focal_length=18.0,  # mm (for 90° H-FOV)
+                horizontal_aperture=36.0,  # mm (90° H-FOV)
+                resolution=ego_res,
+                clipping_range=(0.01, 10000.0)
+            )
+            
+            if camera_path:
+                self.robot_camera_path = camera_path
+            else:
+                self.logger.warning("Failed to create ego camera")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to setup robot camera: {e}")
     
     def _open_robot_camera_viewport(self, camera_path):
         """
         Open a new viewport window showing the robot's ego-view camera.
         """
         try:
-            # Use Isaac Sim viewport utility to create new viewport window
             from isaacsim.core.utils.viewports import create_viewport_for_camera
             
-            # Create new viewport window for robot camera
+            ego_res = self.config["ego_camera_resolution"]
+            
             create_viewport_for_camera(
                 viewport_name="RobotEgoView",
                 camera_prim_path=camera_path,
-                width=800,
-                height=600,
+                width=ego_res[0],
+                height=ego_res[1],
                 position_x=100,
                 position_y=100
             )
-            self.logger.info(f"Robot ego-view camera window opened with camera {camera_path}")
             
-        except ImportError:
-            # Fallback: try alternative method if import fails
-            try:
-                import omni.kit.viewport.utility as vp_utils
-                viewport = vp_utils.get_active_viewport()
-                if viewport:
-                    self.logger.info(f"Setting robot camera {camera_path} (fallback method - using existing viewport)")
-            except Exception as e2:
-                self.logger.warning(f"Could not open robot camera viewport window: {e2}")
+            self.logger.info(f"✓ Robot ego-view viewport opened: {ego_res[0]}×{ego_res[1]}")
+            
         except Exception as e:
-            self.logger.warning(f"Could not open robot camera viewport window: {e}")
-
-    def _set_viewport_camera(self):
+            self.logger.warning(f"Failed to open robot ego-view viewport: {e}")
+    
+    def _set_default_viewport_camera(self, camera_path):
         """
-        Set the camera as the default viewport camera.
-        Called after world reset when viewport should be ready.
+        Set the top camera as the default viewport camera (replaces main scene view).
         """
-        if not hasattr(self, 'camera_path') or self.camera_path is None:
-            return
-        
         try:
-            # Method 1: Use viewport utility to get active viewport
             import omni.kit.viewport.utility as vp_utils
+            
             viewport = vp_utils.get_active_viewport()
             if viewport:
-                viewport.set_active_camera(self.camera_path)
-                self.logger.info(f"Camera set as default view at {self.camera_path}")
-                return
+                viewport.set_active_camera(camera_path)
+                self.logger.info(f"✓ Top camera set as default viewport camera")
+            else:
+                self.logger.warning("No active viewport found to set camera")
+                
         except Exception as e:
-            self.logger.debug(f"Method 1 failed: {e}")
-        
-        try:
-            # Method 2: Try to get viewport by window name
-            import omni.kit.viewport.utility as vp_utils
-            viewport_window = vp_utils.get_viewport_from_window_name("Viewport")
-            if viewport_window:
-                viewport_window.set_active_camera(self.camera_path)
-                self.logger.info(f"Camera set as default view at {self.camera_path} (method 2)")
-                return
-        except Exception as e:
-            self.logger.debug(f"Method 2 failed: {e}")
-        
-        try:
-            # Method 3: Use omni.kit.commands
-            omni.kit.commands.execute(
-                "SetActiveCamera",
-                path=self.camera_path
-            )
-            self.logger.info(f"Camera set as default view at {self.camera_path} (method 3)")
-            return
-        except Exception as e:
-            self.logger.debug(f"Method 3 failed: {e}")
-        
-        # If all methods fail, log warning but continue
-        self.logger.warning(f"Could not set camera as default view. Camera exists at {self.camera_path}")
+            self.logger.warning(f"Failed to set default viewport camera: {e}")
 
     def _on_physics_step(self, step_size):
         """
@@ -1244,16 +1590,39 @@ class SpotSimulation:
                 robot_rpy = self.quaternion_to_rpy(robot_quat)  # Convert to roll, pitch, yaw
                 cmd_vel = self.controller.get_command()  # Command velocity [vx, vy, yaw]
                 
-                # Get object position from stage (object is dynamic, so position can change)
-                # Only if object is enabled in configuration
+                # Check if first command has been received (any non-zero velocity)
+                if not self.first_command_received:
+                    if abs(cmd_vel[0]) > 0.01 or abs(cmd_vel[1]) > 0.01 or abs(cmd_vel[2]) > 0.01:
+                        self.first_command_received = True
+                        self.logger.info("First keyboard command received - starting data saving")
+                
+                # Get object position and orientation from stage
+                # Calculate L1 distance metric based on object type
                 l1_distance = 0.0
+                object_pos = np.array([0.0, 0.0, 0.0])
+                object_quat = np.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion
+                goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
+                
                 object_type = self.config.get("object_type", "box")
                 if self.config.get("use_object", True):
                     if object_type == "gate":
-                        # Gate is static, no distance tracking needed
-                        pass
+                        # Gate: calculate robot <-> goal L1 distance
+                        robot_pos_2d = robot_pos[:2]
+                        l1_distance = np.sum(np.abs(robot_pos_2d - goal_pos_2d))
+                        
+                        # Gate is static, get position from config for CSV
+                        if "gate_pos" in self.config:
+                            gate_pos_2d = self.config["gate_pos"]
+                            object_pos = np.array([gate_pos_2d[0], gate_pos_2d[1], 0.0])
+                        # Get orientation from gate yaw
+                        if "gate_yaw" in self.config:
+                            gate_yaw = self.config["gate_yaw"]
+                            half_yaw = gate_yaw / 2.0
+                            object_quat = np.array([
+                                np.cos(half_yaw), 0.0, 0.0, np.sin(half_yaw)
+                            ])
                     else:
-                        # Dynamic objects (box, sphere)
+                        # Dynamic objects (box, sphere): calculate box/sphere <-> goal L1 distance
                         object_path = self._get_object_prim_path()
                         object_prim = self.stage.GetPrimAtPath(object_path)
                         if object_prim.IsValid():
@@ -1263,9 +1632,38 @@ class SpotSimulation:
                             object_pos_world = object_transform.ExtractTranslation()
                             object_pos = np.array([object_pos_world[0], object_pos_world[1], object_pos_world[2]])
                             
+                            # Get object orientation (quaternion)
+                            object_rotation = object_transform.ExtractRotationQuat()
+                            object_quat = np.array([
+                                object_rotation.GetReal(),
+                                object_rotation.GetImaginary()[0],
+                                object_rotation.GetImaginary()[1],
+                                object_rotation.GetImaginary()[2]
+                            ])
+                            
                             # Calculate L1 distance (Manhattan distance) between object and goal
-                            goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
                             l1_distance = np.sum(np.abs(object_pos[:2] - goal_pos_2d))
+                else:
+                    # No object: calculate robot <-> goal L1 distance
+                    robot_pos_2d = robot_pos[:2]
+                    l1_distance = np.sum(np.abs(robot_pos_2d - goal_pos_2d))
+                
+                # Check if task is complete (distance < 1m)
+                if self.task_in_progress and l1_distance < 1.0:
+                    self.task_in_progress = False
+                    self._change_goal_color_to_green()
+                    self.logger.info(f"Task completed! Distance to goal: {l1_distance:.3f}m < 1.0m")
+                    self.logger.info("Logging stopped")
+                
+                # Save experiment data (CSV and camera images) only after first command and while task is in progress
+                if self.first_command_received and self.task_in_progress:
+                    # Set experiment start time on first save
+                    if not self.data_saving_started:
+                        self.data_saving_started = True
+                        self.experiment_start_time = datetime.now()
+                        self.logger.info("Experiment data saving started")
+                    
+                    self._save_experiment_data(robot_pos, robot_quat, object_pos, object_quat, l1_distance)
                 
                 # Log at DEBUG level: detailed robot state
                 self.logger.debug(
@@ -1273,11 +1671,15 @@ class SpotSimulation:
                     f"RPY: [{np.degrees(robot_rpy[0]):.2f}, {np.degrees(robot_rpy[1]):.2f}, {np.degrees(robot_rpy[2]):.2f}]°, "
                     f"Cmd vel: [vx={cmd_vel[0]:.2f}, vy={cmd_vel[1]:.2f}, yaw={cmd_vel[2]:.2f}]"
                 )
-                # Log at INFO level: distance between object and goal (only for dynamic objects)
-                if self.config.get("use_object", True) and object_type != "gate":
-                    self.logger.info(
-                        f"{object_type.capitalize()} <-> Goal L1 distance: {l1_distance:.2f} m"
-                    )
+                
+                # Log at INFO level: L1 distance to goal
+                if self.config.get("use_object", True):
+                    if object_type == "gate":
+                        self.logger.info(f"Robot <-> Goal L1 distance: {l1_distance:.2f} m")
+                    else:
+                        self.logger.info(f"{object_type.capitalize()} <-> Goal L1 distance: {l1_distance:.2f} m")
+                else:
+                    self.logger.info(f"Robot <-> Goal L1 distance: {l1_distance:.2f} m")
         
         # Robot control: apply commands to robot
         if self.physics_ready:
@@ -1330,15 +1732,28 @@ class SpotSimulation:
         # Reset world (required before querying articulation properties)
         self.world.reset()
         
+        # Initialize experiment directory structure and CSV file
+        self._initialize_experiment_directory()
+        
         # Create ego-view camera attached to robot base (after world reset, robot is fully initialized)
         self._setup_robot_camera()
         
-        # Set camera as default viewport camera (after world reset, viewport should be ready)
-        self._set_viewport_camera()
-        
-        # Open robot ego-view camera window (after world reset, viewport system should be ready)
+        # Open ego camera viewport window (after world reset, viewport system should be ready)
         if hasattr(self, 'robot_camera_path') and self.robot_camera_path:
+            self.logger.info("Opening robot ego-view viewport...")
             self._open_robot_camera_viewport(self.robot_camera_path)
+        else:
+            self.logger.warning("Cannot open ego-view viewport - camera path not available")
+        
+        # Set top camera as default viewport camera (replaces main scene view)
+        if hasattr(self, 'camera_path') and self.camera_path:
+            self._set_default_viewport_camera(self.camera_path)
+        else:
+            self.logger.warning("Cannot set top camera as default viewport - camera path not available")
+        
+        # Initialize camera render products (once, after cameras are set up)
+        # This ensures consistency between viewport and captured images
+        self._initialize_camera_render_products()
         
         # Register physics callback for robot control and logging
         self.world.add_physics_callback("physics_step", callback_fn=self._on_physics_step)
@@ -1369,18 +1784,40 @@ class SpotSimulation:
 
     def cleanup(self):
         """
-        Cleanup resources: stop controller and remove physics callback.
+        Cleanup resources: stop controller, close CSV file, detach annotators, and remove physics callback.
         Should be called after simulation ends.
         """
         # Stop keyboard controller thread
         if self.controller:
             self.controller.stop()
         
+        # Close CSV file
+        if self.csv_file:
+            self.csv_file.flush()
+            self.csv_file.close()
+            self.logger.info(f"CSV file closed with {self.frame_counter} frames saved")
+        
+        # Cleanup camera render products and annotators
+        if hasattr(self, 'rgb_annotators') and hasattr(self, 'render_products'):
+            try:
+                for camera_type, annotator in self.rgb_annotators.items():
+                    if camera_type in self.render_products:
+                        annotator.detach([self.render_products[camera_type]])
+                self.logger.info("Camera annotators detached")
+            except Exception as e:
+                self.logger.debug(f"Error cleaning up camera annotators: {e}")
+        
         # Remove physics callback
         if self.world and self.world.physics_callback_exists("physics_step"):
             self.world.remove_physics_callback("physics_step")
         
         self.logger.info("Cleanup complete")
+        
+        # Close all logging handlers (flush and close terminal.log)
+        for handler in self.logger.handlers[:]:
+            handler.flush()
+            handler.close()
+            self.logger.removeHandler(handler)
 
 
 # ===================== Main Entry Point =====================
@@ -1396,14 +1833,24 @@ def main():
        sim = SpotSimulation(config_file="example_config.json")
     
     3. Override specific values:
-       sim = SpotSimulation(randomize=True, map_size=12.0)
+       sim = SpotSimulation(randomize=True, map_size=12.0, experiment_name="my_experiment")
     """
-    # Create simulation instance
+    # Prompt for experiment name
+    print("=" * 60)
+    print("Isaac Sim - Spot Robot Remote Control Demo")
+    print("=" * 60)
+    experiment_name = input("Enter experiment name (press Enter for 'NULL'): ").strip()
+    if not experiment_name:
+        experiment_name = "NULL"
+    print(f"Experiment name: {experiment_name}")
+    print("=" * 60)
+    
+    # Create simulation instance with experiment name
     # Can pass config_file="config.json" to load from file
     # Can pass keyword arguments to override config values
-    sim = SpotSimulation()
-    # sim = SpotSimulation(config_file="example_config.json")
-    # sim = SpotSimulation(randomize=True, map_size=12.0)
+    sim = SpotSimulation(experiment_name=experiment_name)
+    # sim = SpotSimulation(config_file="example_config.json", experiment_name=experiment_name)
+    # sim = SpotSimulation(randomize=True, map_size=12.0, experiment_name=experiment_name)
     
     # Setup simulation (environment, robot, controller)
     sim.setup()
