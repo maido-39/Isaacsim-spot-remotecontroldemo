@@ -2,6 +2,8 @@
 
 A comprehensive simulation project for controlling a Boston Dynamics Spot quadruped robot in NVIDIA Isaac Sim with keyboard input, automatic experiment data collection, and advanced visualization tools.
 
+> **한국어 버전**: [README_KR.md](README_KR.md)를 참조하세요.
+
 ## Overview
 
 This project provides a complete simulation environment for the Spot robot featuring:
@@ -40,18 +42,31 @@ This project provides a complete simulation environment for the Spot robot featu
 - **Required Python packages**: `pygame`, `numpy`, `pandas`, `matplotlib`, `pillow`
 
 ## Installation
+0. H/W & Nvidia driver & OS 
+- Tested @
+   - RTX 2060 12G
+   - NVIDIA-SMI 535.216.01
+   - Driver Version: 535.216.01
+   - CUDA Version: 12.2  
+   - Ubuntu 22.04.5 LTS
 
-1. **Set up Isaac Sim environment**:
+1. **Create conda environment**:
    ```bash
-   conda activate isc-pak  # or your Isaac Sim environment name
+   # Create a new conda environment (if not already created)
+   conda create -n isc-demo python=3.10 -y && conda activate isc-demo
    ```
 
-2. **Install Python dependencies**:
+2. **Install Python dependencies & Isaacsim 4.5.0**:
    ```bash
+   # Install Isaacsim
+   pip install isaacsim-rl==4.1.0 isaacsim-replicator==4.1.0 isaacsim-extscache-physics==4.1.0 isaacsim-extscache-kit-sdk==4.1.0 isaacsim-extscache-kit==4.1.0 isaacsim-app==4.1.0 --extra-index-url https://pypi.nvidia.com
+   # Install Deps
+   pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cu121 
    pip install pygame numpy pandas matplotlib pillow
+   pip install tensordict==0.3.2
    ```
 
-3. **Verify installation**:
+4. **Verify installation**:
    ```bash
    python -c "from isaacsim import SimulationApp; print('Isaac Sim ready')"
    ```
@@ -61,7 +76,7 @@ This project provides a complete simulation environment for the Spot robot featu
 ### Running the Simulation
 
 ```bash
-conda activate isc-pak
+conda activate isc-demo
 python quadruped_example.py
 ```
 
@@ -316,7 +331,8 @@ The simulation runs at:
 
 ```
 .
-├── README.md                    # This file
+├── README.md                    # This file (English)
+├── README_KR.md                 # Korean version
 ├── quadruped_example.py         # Main simulation (SpotSimulation class)
 ├── plot_experiment.py           # Visualization tool
 ├── keyboard_controller.py       # Pygame keyboard controller
