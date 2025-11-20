@@ -12,6 +12,7 @@ from typing import Optional
 import numpy as np
 import omni
 import omni.kit.commands
+import torch
 from isaacsim.core.utils.rotations import quat_to_rot_matrix
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.robot.policy.examples.controllers import PolicyController
@@ -52,6 +53,14 @@ class SpotFlatTerrainPolicy(PolicyController):
             assets_root_path + "/Isaac/Samples/Policies/Spot_Policies/spot_policy.pt",
             assets_root_path + "/Isaac/Samples/Policies/Spot_Policies/spot_env.yaml",
         )
+        
+        # Move policy to CUDA for GPU inference
+        if torch.cuda.is_available():
+            self.policy = self.policy.cuda()
+            self._device = torch.device("cuda")
+        else:
+            self._device = torch.device("cpu")
+        
         self._action_scale = 0.2
         self._previous_action = np.zeros(12)
         self._policy_counter = 0
@@ -95,6 +104,25 @@ class SpotFlatTerrainPolicy(PolicyController):
         obs[36:48] = self._previous_action
 
         return obs
+
+    def _compute_action(self, obs: np.ndarray) -> np.ndarray:
+        """
+        Computes the action from the observation using the loaded policy on CUDA.
+
+        Args:
+            obs (np.ndarray): The observation.
+
+        Returns:
+            np.ndarray: The action.
+        """
+        with torch.no_grad():
+            # Convert to tensor and move to CUDA device
+            obs_tensor = torch.from_numpy(obs).view(1, -1).float().to(self._device)
+            # Run inference on CUDA
+            action_tensor = self.policy(obs_tensor)
+            # Move result back to CPU and convert to numpy
+            action = action_tensor.detach().cpu().view(-1).numpy()
+        return action
 
     def forward(self, dt, command):
         """

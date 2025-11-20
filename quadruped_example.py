@@ -27,6 +27,7 @@ import sys
 import json
 import os
 import csv
+import argparse
 from datetime import datetime
 from pathlib import Path
 from pxr import Gf, UsdGeom, UsdPhysics, UsdShade, Sdf
@@ -55,8 +56,7 @@ DEFAULT_CONFIG = {
     "dome_light_intensity": 600.0,
     "marker_radius": 0.3,
     "goal_hemisphere_diameter": 1.0,  # Diameter of hemisphere at goal point (meters)
-    "use_object": True,  # Whether to spawn an object in the environment
-    "object_type": "box",  # Type of object to spawn: "box", "sphere", "gate", etc.
+    "object_type": "none",  # Type of object to spawn: "none", "box", "sphere", "gate"
     
     # Gate-specific parameters
     "wall_depth_min": 0.3,  # Minimum wall depth (meters)
@@ -108,13 +108,14 @@ DEFAULT_CONFIG = {
 class SpotSimulation:
     """Main simulation class for Isaac Sim Spot robot control"""
 
-    def __init__(self, config_file=None, experiment_name=None, **config_overrides):
+    def __init__(self, config_file=None, experiment_name=None, log_level=logging.INFO, **config_overrides):
         """
         Initialize simulation.
     
     Args:
             config_file: Path to JSON config file (optional)
             experiment_name: Name of the experiment (optional, defaults to "NULL")
+            log_level: Logging level (default: logging.INFO)
             **config_overrides: Override any config values
         """
         # Load configuration: start with defaults, then load from file if provided, then apply overrides
@@ -126,7 +127,7 @@ class SpotSimulation:
         self.config.update(config_overrides)
         
         # Setup logging system
-        self._setup_logging()
+        self._setup_logging(log_level)
         
         # Initialize Isaac Sim components (will be set up later)
         self.world = None          # Isaac Sim World instance
@@ -154,13 +155,16 @@ class SpotSimulation:
         self.data_saving_started = False   # Flag to track if data saving has started
         self.first_command_received = False  # Flag to track first keyboard command
 
-    def _setup_logging(self):
+    def _setup_logging(self, log_level=logging.INFO):
         """
         Setup logging system with console output.
-        Configures logger to output DEBUG level messages with timestamps.
+        Configures logger to output messages with timestamps.
+        
+        Args:
+            log_level: Logging level (default: logging.INFO)
         """
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(log_level)
         
         # Clear existing handlers to avoid duplicates
         if self.logger.handlers:
@@ -566,10 +570,9 @@ class SpotSimulation:
         self.config["start_position"] = start_pos.tolist()
         self.config["goal_position"] = goal_pos.tolist()
         
-        # Randomize object properties only if use_object is True
-        if cfg.get("use_object", True):
-            object_type = cfg.get("object_type", "box")
-            
+        # Randomize object properties only if object_type is not "none"
+        object_type = cfg.get("object_type", "none")
+        if object_type != "none":
             if object_type == "gate":
                 # Gate randomization is handled in _create_gate_object()
                 # Just log start and goal here
@@ -640,7 +643,7 @@ class SpotSimulation:
         Returns:
             str: Prim path of the object
         """
-        object_type = self.config.get("object_type", "box")
+        object_type = self.config.get("object_type", "none")
         if object_type == "box":
             return "/World/ObstacleBox"
         elif object_type == "sphere":
@@ -648,13 +651,13 @@ class SpotSimulation:
         elif object_type == "gate":
             return "/World/Gate"  # Base path for gate (contains GateL and GateR)
         else:
-            # Default to box path for unknown types
-            return "/World/ObstacleBox"
+            # Return None for "none" or unknown types
+            return None
     
     def _create_object(self, cfg, position, scale, color):
         """
         Create a dynamic object in the environment based on object_type.
-        Modular function to support different object types (box, sphere, etc.).
+        Modular function to support different object types (box, sphere, gate).
         
         Args:
             cfg: Configuration dictionary
@@ -662,7 +665,12 @@ class SpotSimulation:
             scale: Object scale [x, y, z]
             color: Object color [r, g, b]
         """
-        object_type = cfg.get("object_type", "box")
+        object_type = cfg.get("object_type", "none")
+        
+        if object_type == "none":
+            self.logger.warning("_create_object called with object_type='none', skipping object creation")
+            return
+        
         object_path = self._get_object_prim_path()
         
         if object_type == "box":
@@ -673,8 +681,7 @@ class SpotSimulation:
             # Gate doesn't use position/scale/color from randomization, it calculates its own
             self._create_gate_object(cfg)
         else:
-            self.logger.warning(f"Unknown object type '{object_type}', defaulting to box")
-            self._create_box_object(cfg, object_path, position, scale, color)
+            self.logger.warning(f"Unknown object type '{object_type}', skipping object creation")
     
     def _create_box_object(self, cfg, prim_path, position, scale, color):
         """
@@ -1282,11 +1289,12 @@ class SpotSimulation:
             color=wall_color
         ))
         
-        # 5. Create dynamic object (can be pushed by robot) - only if use_object is True
-        if cfg["use_object"]:
+        # 5. Create dynamic object (can be pushed by robot) - only if object_type is not "none"
+        object_type = cfg.get("object_type", "none")
+        if object_type != "none":
             self._create_object(cfg, box_pos, box_scale, box_color)
         else:
-            self.logger.info("Object spawning disabled (use_object=False)")
+            self.logger.info("Object spawning disabled (object_type='none')")
         
         # 7. Create start marker (red sphere) - visual only, no physics
         start_sphere = UsdGeom.Sphere.Define(self.stage, "/World/StartMarker")
@@ -1342,12 +1350,34 @@ class SpotSimulation:
         """
         Setup Spot robot at start position, oriented to face the goal.
         Calculates yaw angle from start to goal and converts to quaternion.
+        Spawn position is offset by 1/2 hemisphere diameter toward goal to prevent collision.
         """
         if self.start_pos is None or self.goal_pos is None:
             raise RuntimeError("Environment must be setup first")
         
         # Calculate direction vector from start to goal
         direction = self.goal_pos - self.start_pos
+
+        ## Offset spawn position by 1/2 hemisphere diameter toward goal to prevent collision
+        ## ===========================================================
+        direction_norm = np.linalg.norm(direction)
+        
+        # Get hemisphere diameter from config
+        hemisphere_diameter = self.config.get("goal_hemisphere_diameter", 1.0)
+        offset_distance = hemisphere_diameter / 2.0
+        
+        # Calculate offset: move spawn point by half hemisphere diameter toward goal
+        if direction_norm > 0:
+            direction_normalized = direction / direction_norm
+            offset = direction_normalized * offset_distance
+        else:
+            # If start and goal are at same position, no offset needed
+            offset = np.array([0.0, 0.0])
+        
+        # Calculate spawn position: start position + offset toward goal
+        spawn_pos = self.start_pos + offset
+        ## ===============================================================
+
         # Calculate yaw angle (rotation around Z-axis) using atan2
         yaw = np.arctan2(direction[1], direction[0])
         
@@ -1360,16 +1390,16 @@ class SpotSimulation:
             np.sin(half_yaw)   # z component (yaw rotation)
         ])
         
-        # Add Spot robot to scene at start position with calculated orientation
+        # Add Spot robot to scene at offset spawn position with calculated orientation
         # Robot z position is 0.0 (on the ground) - the robot model has its own base height
         self.spot = SpotFlatTerrainPolicy(
             prim_path="/World/Spot",
             name="Spot",
-            position=np.array([self.start_pos[0], self.start_pos[1], 0.0]),
+            position=np.array([spawn_pos[0], spawn_pos[1], 0.0]),
             orientation=orientation,
         )
         
-        self.logger.info(f"Robot placed at [{self.start_pos[0]:.2f}, {self.start_pos[1]:.2f}]")
+        self.logger.info(f"Robot placed at [{spawn_pos[0]:.2f}, {spawn_pos[1]:.2f}] (offset {offset_distance:.2f}m from start toward goal)")
         
         # Create hemisphere at goal point
         self._create_goal_hemisphere()
@@ -1610,8 +1640,8 @@ class SpotSimulation:
                 object_quat = np.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion
                 goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
                 
-                object_type = self.config.get("object_type", "box")
-                if self.config.get("use_object", True):
+                object_type = self.config.get("object_type", "none")
+                if object_type != "none":
                     if object_type == "gate":
                         # Gate: calculate robot <-> goal L1 distance
                         robot_pos_2d = robot_pos[:2]
@@ -1680,7 +1710,7 @@ class SpotSimulation:
                 )
                 
                 # Log at INFO level: L1 distance to goal
-                if self.config.get("use_object", True):
+                if object_type != "none":
                     if object_type == "gate":
                         self.logger.info(f"Robot <-> Goal L1 distance: {l1_distance:.2f} m")
                     else:
@@ -1832,19 +1862,67 @@ def main():
     """
     Main entry point for the simulation.
     
+    Command-line arguments:
+        --object-type: Type of object to spawn ("none", "box", "sphere", "gate")
+        --loglevel: Logging level ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    
     Usage examples:
     1. Default configuration:
-       sim = SpotSimulation()
+       python quadruped_example.py
     
-    2. Load from JSON file:
+    2. With command-line arguments:
+       python quadruped_example.py --object-type gate --loglevel DEBUG
+    
+    3. Load from JSON file:
        sim = SpotSimulation(config_file="example_config.json")
     
-    3. Override specific values:
+    4. Override specific values:
        sim = SpotSimulation(randomize=True, map_size=12.0, experiment_name="my_experiment")
     """
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Isaac Sim - Spot Robot Remote Control Demo",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--object-type",
+        type=str,
+        choices=["none", "box", "sphere", "gate"],
+        default=None,
+        help="Type of object to spawn: 'none', 'box', 'sphere', or 'gate' (default: from config)"
+    )
+    parser.add_argument(
+        "--loglevel",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="INFO",
+        help="Logging level: DEBUG, INFO, WARNING, ERROR, or CRITICAL (default: INFO)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Convert log level string to logging constant
+    log_level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL
+    }
+    log_level = log_level_map[args.loglevel.upper()]
+    
+    # Prepare config overrides
+    config_overrides = {}
+    if args.object_type is not None:
+        config_overrides["object_type"] = args.object_type
+    
     # Prompt for experiment name
     print("=" * 60)
     print("Isaac Sim - Spot Robot Remote Control Demo")
+    print("=" * 60)
+    if args.object_type:
+        print(f"Object type: {args.object_type}")
+    print(f"Log level: {args.loglevel}")
     print("=" * 60)
     experiment_name = input("Enter experiment name (press Enter for 'NULL'): ").strip()
     if not experiment_name:
@@ -1852,12 +1930,12 @@ def main():
     print(f"Experiment name: {experiment_name}")
     print("=" * 60)
     
-    # Create simulation instance with experiment name
+    # Create simulation instance with experiment name and config overrides
     # Can pass config_file="config.json" to load from file
     # Can pass keyword arguments to override config values
-    sim = SpotSimulation(experiment_name=experiment_name)
-    # sim = SpotSimulation(config_file="example_config.json", experiment_name=experiment_name)
-    # sim = SpotSimulation(randomize=True, map_size=12.0, experiment_name=experiment_name)
+    sim = SpotSimulation(experiment_name=experiment_name, log_level=log_level, **config_overrides)
+    # sim = SpotSimulation(config_file="example_config.json", experiment_name=experiment_name, log_level=log_level)
+    # sim = SpotSimulation(randomize=True, map_size=12.0, experiment_name=experiment_name, log_level=log_level)
     
     # Setup simulation (environment, robot, controller)
     sim.setup()

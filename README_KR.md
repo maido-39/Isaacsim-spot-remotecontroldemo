@@ -73,7 +73,22 @@ NVIDIA Isaac Sim에서 키보드 입력, 자동 실험 데이터 수집, 고급 
 
 ## 빠른 시작
 
-### 시뮬레이션 실행
+### 간단한 데모 실행
+
+최소 설정으로 빠르게 시작하려면 (실험 로깅 없이, 로봇 제어 및 샘플 박스만):
+
+```bash
+conda activate isc-demo
+python spot_demo.py
+```
+
+이 간단한 데모에는 다음이 포함됩니다:
+- 원점에 Spot 로봇
+- 밀 수 있는 샘플 박스
+- 키보드 제어 (메인 시뮬레이션과 동일한 조작)
+- 실험 데이터 로깅 또는 카메라 없음
+
+### 전체 시뮬레이션 실행
 
 ```bash
 conda activate isc-demo
@@ -116,6 +131,40 @@ python plot_experiment.py
 - **구성 가능한 제한**: 최대 속도 및 가속률을 설정을 통해 조정 가능
 
 ## 주요 구성 요소
+
+### `spot_demo.py` - 간단한 데모
+
+빠른 테스트 및 학습을 위한 최소 데모 스크립트입니다. 이 간소화된 버전은 필수 구성 요소만 포함합니다:
+
+#### 기능
+
+- **Spot 로봇**: 기본 방향으로 원점에 생성
+- **샘플 박스**: 위치 [2.0, 0.0, 0.25]에 있는 동적 박스로 밀 수 있음
+- **키보드 제어**: 동일한 `KeyboardController`를 사용한 전체 키보드 제어
+- **기본 환경**: 물리 속성이 있는 지면 평면
+- **데이터 로깅 없음**: 실험 데이터 수집, 카메라 또는 파일 저장 없음
+
+#### 사용법
+
+```bash
+python spot_demo.py
+```
+
+#### 주요 메서드
+
+- `initialize()`: Isaac Sim 월드 및 스테이지 생성
+- `setup_environment()`: 지면 평면 및 샘플 박스 생성
+- `setup_robot()`: 원점에 Spot 로봇 생성
+- `setup()`: 완전한 설정 (환경, 로봇, 컨트롤러)
+- `run()`: 메인 시뮬레이션 루프
+- `cleanup()`: 리소스 정리
+
+#### 사용 시기
+
+- 로봇 제어 빠른 테스트
+- 기본 시뮬레이션 설정 학습
+- 실험 오버헤드 없이 프로토타이핑
+- 간단한 박스 밀기 작업
 
 ### `quadruped_example.py` - 메인 시뮬레이션
 
@@ -333,6 +382,7 @@ expr_data/
 .
 ├── README.md                    # 이 파일
 ├── README_KR.md                 # 한국어 버전
+├── spot_demo.py                 # 간단한 데모 (최소 설정)
 ├── quadruped_example.py         # 메인 시뮬레이션 (SpotSimulation 클래스)
 ├── plot_experiment.py           # 시각화 도구
 ├── keyboard_controller.py       # Pygame 키보드 컨트롤러
@@ -349,7 +399,19 @@ expr_data/
 
 ## 예제
 
-### 기본 사용법
+### 간단한 데모
+
+```python
+from spot_demo import SpotDemo
+
+# 간단한 데모 생성
+demo = SpotDemo()
+demo.setup()
+demo.run()
+demo.cleanup()
+```
+
+### 기본 사용법 (전체 시뮬레이션)
 
 ```python
 from quadruped_example import SpotSimulation

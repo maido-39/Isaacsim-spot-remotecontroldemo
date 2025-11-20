@@ -73,7 +73,22 @@ This project provides a complete simulation environment for the Spot robot featu
 
 ## Quick Start
 
-### Running the Simulation
+### Running the Simplified Demo
+
+For a quick start with minimal setup (no experiment logging, just robot control and a sample box):
+
+```bash
+conda activate isc-demo
+python spot_demo.py
+```
+
+This simplified demo includes:
+- Spot robot at origin
+- Sample box that can be pushed
+- Keyboard control (same controls as main simulation)
+- No experiment data logging or cameras
+
+### Running the Full Simulation
 
 ```bash
 conda activate isc-demo
@@ -116,6 +131,40 @@ python plot_experiment.py
 - **Configurable limits**: Maximum velocities and acceleration rates adjustable via config
 
 ## Main Components
+
+### `spot_demo.py` - Simplified Demo
+
+A minimal demonstration script for quick testing and learning. This simplified version includes only the essential components:
+
+#### Features
+
+- **Spot Robot**: Spawns at origin with default orientation
+- **Sample Box**: A dynamic box at position [2.0, 0.0, 0.25] that can be pushed
+- **Keyboard Control**: Full keyboard control using the same `KeyboardController`
+- **Basic Environment**: Ground plane with physics properties
+- **No Data Logging**: No experiment data collection, cameras, or file saving
+
+#### Usage
+
+```bash
+python spot_demo.py
+```
+
+#### Key Methods
+
+- `initialize()`: Creates Isaac Sim world and stage
+- `setup_environment()`: Creates ground plane and sample box
+- `setup_robot()`: Spawns Spot robot at origin
+- `setup()`: Complete setup (environment, robot, controller)
+- `run()`: Main simulation loop
+- `cleanup()`: Resource cleanup
+
+#### When to Use
+
+- Quick testing of robot control
+- Learning the basic simulation setup
+- Prototyping without experiment overhead
+- Simple box pushing tasks
 
 ### `quadruped_example.py` - Main Simulation
 
@@ -333,6 +382,7 @@ The simulation runs at:
 .
 ├── README.md                    # This file (English)
 ├── README_KR.md                 # Korean version
+├── spot_demo.py                 # Simplified demo (minimal setup)
 ├── quadruped_example.py         # Main simulation (SpotSimulation class)
 ├── plot_experiment.py           # Visualization tool
 ├── keyboard_controller.py       # Pygame keyboard controller
@@ -349,7 +399,19 @@ The simulation runs at:
 
 ## Examples
 
-### Basic Usage
+### Simplified Demo
+
+```python
+from spot_demo import SpotDemo
+
+# Create simplified demo
+demo = SpotDemo()
+demo.setup()
+demo.run()
+demo.cleanup()
+```
+
+### Basic Usage (Full Simulation)
 
 ```python
 from quadruped_example import SpotSimulation
