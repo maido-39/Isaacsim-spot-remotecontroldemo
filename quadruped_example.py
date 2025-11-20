@@ -57,7 +57,7 @@ DEFAULT_CONFIG = {
     "dome_light_intensity": 600.0,
     "marker_radius": 0.3,
     "goal_hemisphere_diameter": 1.0,  # Diameter of hemisphere at goal point (meters)
-    "object_type": "none",  # Type of object to spawn: "none", "box", "sphere", "gate"
+    "object_type": "gate",  # Type of object to spawn: "none", "box", "sphere", "gate"
     
     # Gate-specific parameters
     "wall_depth_min": 0.3,  # Minimum wall depth (meters)
@@ -114,7 +114,7 @@ class PygameDualCameraDisplay:
     """
     
     def __init__(self, window_size=(1600, 800), window_title="Spot Robot - Ego & Top View", key_state_callback=None, 
-                 ego_camera_resolution=(1280, 800)):
+                 ego_camera_resolution=(1280, 800), gate_transform_callback=None):
         """
         Initialize dual camera display.
         
@@ -123,17 +123,21 @@ class PygameDualCameraDisplay:
             window_title: Window title
             key_state_callback: Callback function(key, pressed) to update key state
             ego_camera_resolution: Original ego camera resolution (width, height) for aspect ratio calculation
+            gate_transform_callback: Callback function() to apply gate transform (called on 'g' key press)
         """
         self.window_size = window_size
         self.window_title = window_title
         self.ego_frame_queue = queue.Queue(maxsize=2)  # Keep only latest 2 frames
         self.top_frame_queue = queue.Queue(maxsize=2)  # Keep only latest 2 frames
+        self.gate_transform_queue = queue.Queue(maxsize=1)  # Queue for gate transform requests
         self.running = False
         self.display_thread = None
         self.screen = None
         self.clock = None
         self.key_state_callback = key_state_callback  # Callback to update key state
+        self.gate_transform_callback = gate_transform_callback  # Callback for gate transform
         self.ego_camera_resolution = ego_camera_resolution  # Store original ego camera resolution
+        self.has_gate = gate_transform_callback is not None  # Track if gate exists
         
         # Calculate individual camera display sizes (side by side)
         self.camera_width = window_size[0] // 2
@@ -256,6 +260,7 @@ class PygameDualCameraDisplay:
             
             # Font for labels (render once, reuse)
             font = pygame.font.Font(None, 36)
+            small_font = pygame.font.Font(None, 24)
             ego_label = font.render("Ego View", True, (255, 255, 255))
             top_label = font.render("Top View", True, (255, 255, 255))
             
@@ -297,6 +302,12 @@ class PygameDualCameraDisplay:
                                 self.key_state_callback('yaw_pos', True)
                             elif event.key == pygame.K_o:
                                 self.key_state_callback('yaw_neg', True)
+                            elif event.key == pygame.K_g and self.gate_transform_callback:
+                                # Queue gate transform request (will be processed in main thread)
+                                try:
+                                    self.gate_transform_queue.put_nowait(True)
+                                except queue.Full:
+                                    pass  # Request already queued
                             elif event.key == pygame.K_ESCAPE:
                                 self.key_state_callback('quit', True)
                                 self.running = False
@@ -367,6 +378,23 @@ class PygameDualCameraDisplay:
                 back_buffer.blit(ego_label, (10, 10))
                 back_buffer.blit(top_label, (self.camera_width + 10, 10))
                 
+                # Draw gate transform button label (if gate exists)
+                if self.has_gate:
+                    # Render label on the fly (lightweight operation)
+                    gate_button_label = small_font.render("Press 'G' to Apply Gate Transform", True, (255, 200, 0))
+                    # Position at bottom center of window
+                    label_x = (self.window_size[0] - gate_button_label.get_width()) // 2
+                    label_y = self.window_size[1] - 35
+                    # Draw semi-transparent background for better visibility
+                    bg_rect = pygame.Rect(label_x - 10, label_y - 5, 
+                                        gate_button_label.get_width() + 20, 
+                                        gate_button_label.get_height() + 10)
+                    # Create semi-transparent surface for background
+                    bg_surface = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+                    bg_surface.fill((0, 0, 0, 180))  # Black with alpha
+                    back_buffer.blit(bg_surface, (bg_rect.x, bg_rect.y))
+                    back_buffer.blit(gate_button_label, (label_x, label_y))
+                
                 # Draw divider line
                 pygame.draw.line(back_buffer, (100, 100, 100), 
                                (self.camera_width, 0), 
@@ -427,6 +455,16 @@ class SpotSimulation:
         self._gate_button_window = None # GUI window for gate transform control
         self.task_in_progress = True    # Flag to track if task is in progress
         self.display = None             # Pygame dual camera display
+        
+        # Performance tracking variables
+        self.performance_counter = 0    # Counter for performance logging (1Hz)
+        self.physics_step_times = []   # List to track physics step durations (ms)
+        self.render_times = []         # List to track render step durations (ms)
+        self.frame_times = []          # List to track overall frame times (ms)
+        self.last_physics_time = None   # Timestamp of last physics step
+        self.last_render_time = None    # Timestamp of last render step
+        self.last_frame_time = None     # Timestamp of last frame
+        self.performance_log_interval = 500  # Log performance every 500 physics steps (~1 second at 500Hz)
         
         # Experiment data tracking
         self.experiment_name = experiment_name if experiment_name else "NULL"
@@ -746,10 +784,10 @@ class SpotSimulation:
                 self.csv_file.flush()
             
             # Save camera images
-            if self.robot_camera_path:
-                self._save_camera_image(self.robot_camera_path, "ego", self.frame_counter, timestamp_str)
-            if hasattr(self, 'camera_path') and self.camera_path:
-                self._save_camera_image(self.camera_path, "top", self.frame_counter, timestamp_str)
+                if self.robot_camera_path:
+                    self._save_camera_image(self.robot_camera_path, "ego", self.frame_counter, timestamp_str)
+                if hasattr(self, 'camera_path') and self.camera_path:
+                    self._save_camera_image(self.camera_path, "top", self.frame_counter, timestamp_str)
             
             self.frame_counter += 1
             
@@ -1371,8 +1409,13 @@ class SpotSimulation:
         self.logger.info(f"  (This is line_yaw - 90° = {line_yaw_deg:.2f}° - 90° = {gate_yaw_deg:.2f}°)")
         self.logger.info(f"============================================================")
         
-        # Create GUI button for applying transform
+        # Create GUI button for applying transform (register with display if available)
         self.create_gate_transform_button()
+        
+        # Update display if it already exists (gate is created after display initialization)
+        if self.display and hasattr(self.display, 'gate_transform_callback'):
+            self.display.gate_transform_callback = self.apply_gate_transform
+            self.display.has_gate = True
     
     def apply_gate_transform(self):
         """
@@ -1451,12 +1494,15 @@ class SpotSimulation:
     def create_gate_transform_button(self):
         """
         Create a GUI button to apply Gate transform.
-        The button will appear in a floating window.
-        Note: Disabled in headless mode (uses Pygame display instead).
+        In headless mode with Pygame display, registers a keyboard shortcut ('g' key).
         """
-        # Skip GUI button creation in headless mode
-        self.logger.info("Gate transform button disabled in headless mode (use Pygame display window)")
-        return
+        # Register gate transform callback with Pygame display if available
+        if self.display and hasattr(self.display, 'gate_transform_callback'):
+            self.display.gate_transform_callback = self.apply_gate_transform
+            self.display.has_gate = True
+            self.logger.info("Gate transform button registered: Press 'G' key in Pygame window to apply transform")
+        else:
+            self.logger.info("Gate transform available: Press 'G' key in Pygame window to apply transform")
 
     # ===================== Environment Setup =====================
     def setup_environment(self):
@@ -1881,7 +1927,7 @@ class SpotSimulation:
             
             # Ensure RGB format (not BGR)
             return image_array
-            
+                
         except Exception as e:
             # Silently return None on error (avoid spam during shutdown)
             return None
@@ -1931,12 +1977,38 @@ class SpotSimulation:
         Args:
             step_size: Physics timestep size
         """
+        # Performance tracking: measure physics step time
+        current_time = time.time()
+        if self.last_physics_time is not None:
+            physics_duration = (current_time - self.last_physics_time) * 1000  # Convert to ms
+            self.physics_step_times.append(physics_duration)
+            # Keep only last 500 samples (1 second at 500Hz)
+            if len(self.physics_step_times) > 500:
+                self.physics_step_times.pop(0)
+        self.last_physics_time = current_time
+        
+        # Check for gate transform requests from Pygame display thread
+        if self.display and hasattr(self.display, 'gate_transform_queue'):
+            try:
+                self.display.gate_transform_queue.get_nowait()
+                # Process gate transform in main thread (safe to access USD stage here)
+                if hasattr(self, 'apply_gate_transform'):
+                    self.apply_gate_transform()
+            except queue.Empty:
+                pass
+        
         # Command update: update controller at 50Hz (every 10 physics steps)
         # Physics runs at 500Hz, so 500Hz / 10 = 50Hz
         self.command_counter += 1
         if self.command_counter >= 10:
             self.command_counter = 0
             self.controller.update()  # Update controller state based on keyboard input
+        
+        # Performance logging: log performance stats at 1Hz (every 500 physics steps)
+        self.performance_counter += 1
+        if self.performance_counter >= self.performance_log_interval:
+            self.performance_counter = 0
+            self._log_performance_stats()
         
         # Logging: log robot state at 10Hz (every 50 physics steps)
         # Physics runs at 500Hz, so 500Hz / 50 = 10Hz
@@ -2112,11 +2184,17 @@ class SpotSimulation:
         window_width = 1600  # Total width for side-by-side display
         window_height = 800  # Height (matches ego camera aspect ratio)
         ego_res = self.config["ego_camera_resolution"]
+        
+        # Check if gate exists (will be set during gate creation)
+        has_gate = self.config.get("object_type") == "gate"
+        gate_transform_cb = self.apply_gate_transform if has_gate else None
+        
         self.display = PygameDualCameraDisplay(
             window_size=(window_width, window_height),
             window_title="Spot Robot - Ego & Top View (i/j/k/l: x,y | u/o: yaw | ESC: quit)",
             key_state_callback=update_key_state,
-            ego_camera_resolution=ego_res
+            ego_camera_resolution=ego_res,
+            gate_transform_callback=gate_transform_cb
         )
         self.display.start()
         
@@ -2125,6 +2203,12 @@ class SpotSimulation:
         
         # Note: We don't call controller.start() because we handle keyboard input in display window
         # The controller.update() is called in _on_physics_step callback
+        
+        # Automatically apply gate transform if gate exists (after all components are loaded)
+        if self.config.get("object_type") == "gate" and "gate_pos" in self.config:
+            self.logger.info("Automatically applying gate transform after all components loaded...")
+            # Apply transform automatically
+            self.apply_gate_transform()
         
         self.logger.info("Setup complete")
 
@@ -2140,9 +2224,16 @@ class SpotSimulation:
         self.logger.info("Starting simulation...")
         self.logger.info("Controls: i/k (x), j/l (y), u/o (yaw), ESC (quit)")
         self.logger.info("Camera views displayed in Pygame window (smooth 50+ FPS)")
+        self.logger.info("Performance logging enabled (1Hz)")
+        
+        # Initialize frame timing
+        self.last_frame_time = time.time()
         
         # Main simulation loop
         while simulation_app.is_running():
+            # Track frame time
+            frame_start_time = time.time()
+            
             # Check if quit requested from keyboard controller or display window
             if self.controller.is_quit_requested():
                 break
@@ -2152,8 +2243,20 @@ class SpotSimulation:
                 self.logger.info("Pygame window closed - quitting...")
                 break
             
-            # Step physics and rendering
+            # Step physics and rendering (track render time)
+            render_start_time = time.time()
             self.world.step(render=True)
+            render_duration = (time.time() - render_start_time) * 1000  # Convert to ms
+            self.render_times.append(render_duration)
+            # Keep only last 500 samples
+            if len(self.render_times) > 500:
+                self.render_times.pop(0)
+            
+            # Track overall frame time
+            frame_duration = (time.time() - frame_start_time) * 1000  # Convert to ms
+            self.frame_times.append(frame_duration)
+            if len(self.frame_times) > 500:
+                self.frame_times.pop(0)
             
             # Update Pygame display with camera frames (every frame for smooth display)
             if self.display:

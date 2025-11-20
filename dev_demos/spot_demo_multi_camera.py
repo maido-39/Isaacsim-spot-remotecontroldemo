@@ -33,19 +33,23 @@ from isaacsim.core.api import World
 from isaacsim.core.api.objects import DynamicCuboid
 from isaacsim.robot.policy.examples.robots import SpotFlatTerrainPolicy
 from keyboard_controller import KeyboardController
-import cv2
+import time
 
 
 class SpotDemoMultiCamera:
     """Spot robot demo with keyboard control, sample box, and parameterized multi-camera system"""
 
-    def __init__(self, num_cameras=6):
+    def __init__(self, num_cameras=6, enable_render_products=True, camera_resolution=(320, 240)):
         """Initialize the demo
         
         Args:
             num_cameras: Number of cameras to create (default: 6)
                          Cameras are positioned on a circle with radius 6m at Z=10m
                          and point toward origin (0,0,0)
+            enable_render_products: If True, create render products for image capture (default: True)
+                                    Set to False to test camera overhead without rendering cost
+            camera_resolution: Resolution for each camera (width, height) (default: (320, 240))
+                              Lower resolution = better performance
         """
         self.world = None
         self.stage = None
@@ -54,11 +58,24 @@ class SpotDemoMultiCamera:
         self.physics_ready = False
         self.command_counter = 0
         self.num_cameras = num_cameras
+        self.enable_render_products = enable_render_products
+        self.camera_resolution = camera_resolution
         self.camera_paths = []  # List of camera paths
         self.render_products = {}  # Camera render products for display
         self.rgb_annotators = {}  # RGB annotators for camera capture
         self.camera_render_initialized = False
-        self.window_name = "Spot Robot - Multi Camera View"
+        
+        # Performance monitoring
+        self.performance_stats = {
+            'frame_times': [],
+            'physics_times': [],
+            'render_times': [],
+            'camera_capture_times': [],
+            'start_time': None,
+            'frame_count': 0,
+            'last_report_time': None,
+            'report_interval': 5.0  # Report every 5 seconds
+        }
 
     def initialize(self):
         """Initialize Isaac Sim world and stage"""
@@ -230,7 +247,7 @@ class SpotDemoMultiCamera:
         
         camera_radius = 6.0  # meters
         camera_height = 10.0  # meters (Z position)
-        camera_resolution = (640, 480)  # Resolution for each camera
+        camera_resolution = self.camera_resolution  # Use configured resolution
         
         # Calculate angle between cameras
         angle_step = 2.0 * np.pi / self.num_cameras
@@ -274,8 +291,13 @@ class SpotDemoMultiCamera:
     def _initialize_camera_render_products(self):
         """
         Initialize render products and annotators for all cameras.
-        This enables camera image capture for cv2 display.
+        This enables camera image capture for performance monitoring.
         """
+        if not self.enable_render_products:
+            print("⚠ Render products disabled - cameras created but not rendering (testing camera overhead only)")
+            self.camera_render_initialized = False
+            return
+        
         try:
             import omni.replicator.core as rep
             
@@ -284,7 +306,7 @@ class SpotDemoMultiCamera:
                 self.camera_render_initialized = False
                 return
             
-            camera_resolution = (640, 480)
+            camera_resolution = self.camera_resolution
             
             # Setup render products for each camera
             for i, camera_path in enumerate(self.camera_paths):
@@ -297,7 +319,8 @@ class SpotDemoMultiCamera:
                 self.rgb_annotators[camera_key].attach([self.render_products[camera_key]])
             
             self.camera_render_initialized = True
-            print(f"✓ Camera render products initialized for {len(self.camera_paths)} cameras")
+            print(f"✓ Camera render products initialized for {len(self.camera_paths)} cameras at {camera_resolution[0]}×{camera_resolution[1]}")
+            print(f"  WARNING: Rendering {len(self.camera_paths)} cameras may significantly impact performance!")
                 
         except ImportError as e:
             print(f"Warning: Replicator not available, camera capture disabled: {e}")
@@ -308,14 +331,15 @@ class SpotDemoMultiCamera:
 
     def get_camera_images(self):
         """
-        Get current frames from all cameras.
+        Get current frames from all cameras (for performance testing).
         
         Returns:
-            list: List of BGR image arrays (H, W, 3) or None for unavailable cameras
+            list: List of RGB image arrays (H, W, 3) or None for unavailable cameras
         """
         if not self.camera_render_initialized:
             return [None] * len(self.camera_paths)
         
+        capture_start = time.time()
         images = []
         for i in range(len(self.camera_paths)):
             camera_key = f"camera_{i}"
@@ -342,58 +366,15 @@ class SpotDemoMultiCamera:
                 if len(image_array.shape) == 3 and image_array.shape[2] == 4:
                     image_array = image_array[:, :, :3]
                 
-                # Convert RGB to BGR for OpenCV (cv2 uses BGR format)
-                if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-                    try:
-                        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-                    except Exception:
-                        pass
-                
                 images.append(image_array)
                 
             except Exception as e:
                 images.append(None)
         
+        capture_time = time.time() - capture_start
+        self.performance_stats['camera_capture_times'].append(capture_time)
+        
         return images
-
-    def merge_camera_images(self, images):
-        """
-        Merge multiple camera images into a grid layout.
-        
-        Args:
-            images: List of image arrays (can contain None for missing images)
-            
-        Returns:
-            numpy.ndarray: Merged image or None if no valid images
-        """
-        # Filter out None images
-        valid_images = [img for img in images if img is not None]
-        
-        if len(valid_images) == 0:
-            return None
-        
-        # Calculate grid layout
-        num_images = len(valid_images)
-        if num_images == 1:
-            return valid_images[0]
-        
-        # Calculate grid dimensions
-        cols = int(np.ceil(np.sqrt(num_images)))
-        rows = int(np.ceil(num_images / cols))
-        
-        # Get image dimensions (assume all images have same size)
-        h, w = valid_images[0].shape[:2]
-        
-        # Create merged image
-        merged = np.zeros((rows * h, cols * w, 3), dtype=np.uint8)
-        
-        # Place images in grid
-        for idx, img in enumerate(valid_images):
-            row = idx // cols
-            col = idx % cols
-            merged[row*h:(row+1)*h, col*w:(col+1)*w] = img
-        
-        return merged
 
     def setup_robot(self):
         """Setup Spot robot at origin"""
@@ -455,7 +436,7 @@ class SpotDemoMultiCamera:
         # Reset world (required before querying articulation properties)
         self.world.reset()
 
-        # Initialize camera render products for cv2 display
+        # Initialize camera render products for performance monitoring
         self._initialize_camera_render_products()
 
         # Register physics callback for robot control
@@ -464,20 +445,84 @@ class SpotDemoMultiCamera:
         # Start keyboard controller (runs in separate thread)
         self.controller.start()
 
-        # Create OpenCV window
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.window_name, 1280, 960)  # Initial window size
+        # Initialize performance monitoring
+        self.performance_stats['start_time'] = time.time()
+        self.performance_stats['last_report_time'] = time.time()
 
         print("Setup complete")
+        print(f"Performance monitoring enabled - will report every {self.performance_stats['report_interval']} seconds")
+
+    def _report_performance(self):
+        """Report performance statistics"""
+        stats = self.performance_stats
+        current_time = time.time()
+        
+        if stats['last_report_time'] is None:
+            stats['last_report_time'] = current_time
+            return
+        
+        elapsed = current_time - stats['last_report_time']
+        if elapsed < stats['report_interval']:
+            return
+        
+        # Calculate statistics
+        total_frames = stats['frame_count']
+        total_time = current_time - stats['start_time']
+        avg_fps = total_frames / total_time if total_time > 0 else 0
+        
+        if len(stats['frame_times']) > 0:
+            avg_frame_time = np.mean(stats['frame_times']) * 1000  # ms
+            min_frame_time = np.min(stats['frame_times']) * 1000
+            max_frame_time = np.max(stats['frame_times']) * 1000
+        else:
+            avg_frame_time = min_frame_time = max_frame_time = 0
+        
+        if len(stats['camera_capture_times']) > 0:
+            avg_capture_time = np.mean(stats['camera_capture_times']) * 1000  # ms
+            total_capture_time = np.sum(stats['camera_capture_times']) * 1000
+        else:
+            avg_capture_time = total_capture_time = 0
+        
+        # Print performance report
+        render_status = "WITH rendering" if self.enable_render_products else "WITHOUT rendering (camera overhead only)"
+        print("\n" + "="*70)
+        print(f"PERFORMANCE REPORT - {self.num_cameras} Camera(s) {render_status}")
+        print("="*70)
+        if self.enable_render_products:
+            print(f"Camera Resolution:     {self.camera_resolution[0]}×{self.camera_resolution[1]} per camera")
+        print(f"Total Runtime:        {total_time:.2f} seconds")
+        print(f"Total Frames:         {total_frames}")
+        print(f"Average FPS:          {avg_fps:.2f} FPS")
+        print(f"Target FPS:           50.00 FPS")
+        print(f"Frame Time:           {avg_frame_time:.2f} ms (min: {min_frame_time:.2f}, max: {max_frame_time:.2f})")
+        print(f"Target Frame Time:    20.00 ms")
+        if avg_fps > 0:
+            performance_ratio = (avg_fps / 50.0) * 100
+            print(f"Performance:           {performance_ratio:.1f}% of target (50 FPS)")
+        if len(stats['camera_capture_times']) > 0:
+            print(f"Camera Capture Time:  {avg_capture_time:.2f} ms per capture")
+            print(f"Total Capture Time:   {total_capture_time:.2f} ms")
+            print(f"Capture Overhead:     {(total_capture_time / (total_time * 1000)) * 100:.2f}%")
+        print("="*70 + "\n")
+        
+        # Reset stats for next interval
+        stats['frame_times'] = []
+        stats['camera_capture_times'] = []
+        stats['last_report_time'] = current_time
 
     def run(self):
-        """Run main simulation loop"""
+        """Run main simulation loop with performance monitoring"""
         if self.world is None or self.spot is None or self.controller is None:
             raise RuntimeError("Simulation must be setup first")
 
         print("Starting simulation...")
         print("Controls: i/k (x), j/l (y), u/o (yaw), ESC (quit)")
-        print(f"Displaying {self.num_cameras} camera views at 5Hz")
+        render_status = "WITH rendering" if self.enable_render_products else "WITHOUT rendering"
+        print(f"Monitoring performance with {self.num_cameras} camera(s) {render_status}")
+        if self.enable_render_products:
+            print(f"  Resolution: {self.camera_resolution[0]}×{self.camera_resolution[1]} per camera")
+            print(f"  NOTE: Rendering {self.num_cameras} cameras may impact performance significantly!")
+            print(f"  TIP: Set enable_render_products=False to test camera overhead without rendering")
 
         frame_counter = 0
         
@@ -487,55 +532,39 @@ class SpotDemoMultiCamera:
             if self.controller.is_quit_requested():
                 break
             
+            # Measure frame time
+            frame_start = time.time()
+            
             # Step physics and rendering
             self.world.step(render=True)
             
-            # Capture and display camera frames at 5Hz (every 10 frames at 50Hz rendering)
+            # Capture camera frames at 5Hz (every 10 frames at 50Hz rendering) for performance testing
             frame_counter += 1
             if frame_counter >= 10:
                 frame_counter = 0
-                
-                # Get images from all cameras
+                # Get images from all cameras (for performance measurement)
                 images = self.get_camera_images()
-                
-                # Merge images into grid
-                merged_image = self.merge_camera_images(images)
-                
-                if merged_image is not None:
-                    try:
-                        # Display merged image in OpenCV window
-                        cv2.imshow(self.window_name, merged_image)
-                        
-                        # Check for OpenCV window close or ESC key
-                        key = cv2.waitKey(1) & 0xFF
-                        if key == 27:  # ESC key
-                            print("ESC pressed - quitting...")
-                            break
-                    except cv2.error as e:
-                        # Handle OpenCV errors (window might be closed)
-                        print(f"OpenCV display error: {e}")
-                        break
             
-            # Check if OpenCV window was closed
-            try:
-                if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) < 1:
-                    print("OpenCV window closed - quitting...")
-                    break
-            except cv2.error:
-                # Window might have been destroyed
-                break
+            # Record frame time
+            frame_time = time.time() - frame_start
+            self.performance_stats['frame_times'].append(frame_time)
+            self.performance_stats['frame_count'] += 1
+            
+            # Report performance periodically
+            self._report_performance()
 
     def cleanup(self):
         """Cleanup resources: stop controller, detach camera annotators, and remove physics callback"""
+        # Print final performance summary
+        if self.performance_stats['start_time'] is not None:
+            total_time = time.time() - self.performance_stats['start_time']
+            total_frames = self.performance_stats['frame_count']
+            avg_fps = total_frames / total_time if total_time > 0 else 0
+            print(f"\n[FINAL STATS] Total: {total_frames} frames in {total_time:.2f}s, Avg FPS: {avg_fps:.2f}")
+        
         # Stop keyboard controller thread
         if self.controller:
             self.controller.stop()
-
-        # Close OpenCV window
-        try:
-            cv2.destroyAllWindows()
-        except Exception as e:
-            print(f"Warning: Error closing OpenCV window: {e}")
 
         # Cleanup camera render products and annotators
         if self.camera_render_initialized:
@@ -576,8 +605,18 @@ def main():
     # Examples: 2 cameras = 180deg apart, 6 cameras = 60deg apart
     num_cameras = 6
     
+    # Performance options:
+    # enable_render_products: Set to False to test camera overhead without rendering
+    # camera_resolution: Lower resolution = better performance (try (160, 120) or (320, 240))
+    enable_render_products = True  # Set to False to test without rendering overhead
+    camera_resolution = (320, 240)  # Reduced from (640, 480) for better performance
+    
     # Create demo instance
-    demo = SpotDemoMultiCamera(num_cameras=num_cameras)
+    demo = SpotDemoMultiCamera(
+        num_cameras=num_cameras,
+        enable_render_products=enable_render_products,
+        camera_resolution=camera_resolution
+    )
 
     # Setup simulation (environment, robot, controller, cameras)
     demo.setup()
