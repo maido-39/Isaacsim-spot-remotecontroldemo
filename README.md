@@ -1,6 +1,6 @@
 # Isaac Sim Spot Remote Control Demo
 
-A comprehensive simulation project for controlling a Boston Dynamics Spot quadruped robot in NVIDIA Isaac Sim with keyboard input, automatic experiment data collection, and advanced visualization tools.
+A comprehensive simulation project for controlling a Boston Dynamics Spot quadruped robot in NVIDIA Isaac Sim with keyboard input, automatic experiment data collection, performance monitoring, and advanced visualization tools.
 
 > **한국어 버전**: [README_KR.md](README_KR.md)를 참조하세요.
 
@@ -9,10 +9,12 @@ A comprehensive simulation project for controlling a Boston Dynamics Spot quadru
 This project provides a complete simulation environment for the Spot robot featuring:
 - **Real-time keyboard control** with smooth acceleration/decay model
 - **Automatic experiment data collection** (CSV, camera images, configuration)
+- **Performance monitoring** with real-time statistics (physics, rendering, frame rates)
 - **Multiple object types** (box, sphere, gate) for various task scenarios
 - **Dual camera system** (ego-view and top-down) with synchronized image capture
 - **Interactive visualization tool** for analyzing experiment results
 - **Environment randomization** for varied training scenarios
+- **Performance optimization** options to disable logging/saving for maximum speed
 
 ## Features
 
@@ -22,17 +24,21 @@ This project provides a complete simulation environment for the Spot robot featu
 - 🎲 **Environment Randomization**: Configurable randomization of start/goal positions and objects
 - 📦 **Multiple Object Types**: Support for dynamic boxes, spheres, and static gates
 - 📊 **Real-time State Tracking**: Robot and object positions/orientations at 10Hz
-- 💾 **Automatic Data Saving**: CSV logs, camera images, and configuration files
-- 🎥 **Dual Camera System**: Ego-view (robot-mounted) and top-down (overhead) cameras
+- 💾 **Automatic Data Saving**: CSV logs, camera images, and configuration files (can be disabled)
+- 🎥 **Dual Camera System**: Ego-view (robot-mounted) and top-down (overhead) cameras with Pygame display
 - 📏 **L1 Distance Metrics**: Task completion tracking based on object type
 - 🎯 **Task Completion Detection**: Automatic goal color change when task is complete
+- ⚡ **Performance Monitoring**: Real-time performance statistics (physics, rendering, frame rates) logged at 1Hz
+- 🔧 **Gate Transform**: Automatic gate positioning with manual transform application support
+- 🚀 **Performance Optimization**: CLI flags to disable CSV logging and image saving for maximum speed
 
 ### Visualization Tool (`plot_experiment.py`)
 - 📈 **Comprehensive Plots**: Trajectory maps, velocity plots, and distance metrics
 - 🎨 **Time Gradient Visualization**: Color-coded trajectories showing temporal progression
-- 🖼️ **Integrated Image Viewer**: Synchronized ego and top camera image display
+- 🖼️ **Integrated Image Viewer**: Synchronized ego and top camera image display (if images were saved)
 - 🎚️ **Interactive Timestamp Slider**: Navigate through experiment timeline
 - 🔄 **Automatic Latest Detection**: Finds most recent experiment if no directory specified
+- 💾 **Auto-save**: Saves visualization as `experiment_plot.png` in experiment directory
 
 ## Prerequisites
 
@@ -71,22 +77,7 @@ This project provides a complete simulation environment for the Spot robot featu
 
 ## Quick Start
 
-### Running the Simplified Demo
-
-For a quick start with minimal setup (no experiment logging, just robot control and a sample box):
-
-```bash
-conda activate isc-demo
-python spot_demo.py
-```
-
-This simplified demo includes:
-- Spot robot at origin
-- Sample box that can be pushed
-- Keyboard control (same controls as main simulation)
-- No experiment data logging or cameras
-
-### Running the Full Simulation
+### Running the Main Simulation
 
 ```bash
 conda activate isc-demo
@@ -96,6 +87,66 @@ python quadruped_example.py
 When prompted, enter an experiment name (or press Enter for 'NULL'):
 ```
 Enter experiment name (press Enter for 'NULL'): my_experiment
+```
+
+### Command-Line Interface (CLI)
+
+The `quadruped_example.py` script supports various command-line arguments for customization:
+
+#### Basic Usage
+
+```bash
+# Default configuration
+python quadruped_example.py
+
+# Specify object type
+python quadruped_example.py --object-type gate
+
+# Set logging level
+python quadruped_example.py --loglevel DEBUG
+
+# Combine multiple options
+python quadruped_example.py --object-type box --loglevel INFO
+```
+
+#### CLI Arguments
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--object-type` | `str` | `None` | Type of object to spawn: `"none"`, `"box"`, `"sphere"`, or `"gate"` (default: from config) |
+| `--loglevel` | `str` | `"INFO"` | Logging level: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, or `"CRITICAL"` |
+| `--no-csv-logging` | `flag` | `False` | Disable CSV data logging (improves performance) |
+| `--no-image-saving` | `flag` | `False` | Disable camera image saving (improves performance) |
+
+#### Performance Optimization
+
+For maximum simulation performance, disable data logging:
+
+```bash
+# Disable CSV logging only
+python quadruped_example.py --no-csv-logging
+
+# Disable image saving only
+python quadruped_example.py --no-image-saving
+
+# Disable both for maximum performance
+python quadruped_example.py --no-csv-logging --no-image-saving
+
+# Combine with other options
+python quadruped_example.py --object-type gate --no-csv-logging --no-image-saving
+```
+
+#### Examples
+
+```bash
+# Gate navigation task with debug logging
+python quadruped_example.py --object-type gate --loglevel DEBUG
+
+# Box pushing task with performance mode (no logging/saving)
+python quadruped_example.py --object-type box --no-csv-logging --no-image-saving
+
+# High-performance testing (no object, no logging)
+python quadruped_example.py --object-type none --no-csv-logging --no-image-saving --loglevel WARNING
 ```
 
 ### Visualizing Results
@@ -120,6 +171,7 @@ python plot_experiment.py
 | `l` | Strafe right (-y direction) |
 | `u` | Turn left (+yaw) |
 | `o` | Turn right (-yaw) |
+| `G` | Apply gate transform (only when gate exists) |
 | `ESC` | Quit simulation |
 
 ### Control Features
@@ -127,42 +179,9 @@ python plot_experiment.py
 - **Smooth acceleration**: Velocity commands ramp up gradually when keys are pressed
 - **Decay model**: Velocity decays smoothly when keys are released
 - **Configurable limits**: Maximum velocities and acceleration rates adjustable via config
+- **Pygame window**: All keyboard input handled in Pygame display window (must have focus)
 
 ## Main Components
-
-### `spot_demo.py` - Simplified Demo
-
-A minimal demonstration script for quick testing and learning. This simplified version includes only the essential components:
-
-#### Features
-
-- **Spot Robot**: Spawns at origin with default orientation
-- **Sample Box**: A dynamic box at position [2.0, 0.0, 0.25] that can be pushed
-- **Keyboard Control**: Full keyboard control using the same `KeyboardController`
-- **Basic Environment**: Ground plane with physics properties
-- **No Data Logging**: No experiment data collection, cameras, or file saving
-
-#### Usage
-
-```bash
-python spot_demo.py
-```
-
-#### Key Methods
-
-- `initialize()`: Creates Isaac Sim world and stage
-- `setup_environment()`: Creates ground plane and sample box
-- `setup_robot()`: Spawns Spot robot at origin
-- `setup()`: Complete setup (environment, robot, controller)
-- `run()`: Main simulation loop
-- `cleanup()`: Resource cleanup
-
-#### When to Use
-
-- Quick testing of robot control
-- Learning the basic simulation setup
-- Prototyping without experiment overhead
-- Simple box pushing tasks
 
 ### `quadruped_example.py` - Main Simulation
 
@@ -184,6 +203,7 @@ The core simulation class `SpotSimulation` provides:
      - **Box**: Dynamic pushable box with configurable mass and friction
      - **Sphere**: Dynamic sphere object
      - **Gate**: Static gate with two walls and a gap (for navigation tasks)
+     - **None**: No object (robot navigation only)
 
 2. **Robot Setup**
    - Spawns Spot robot at start position
@@ -193,13 +213,14 @@ The core simulation class `SpotSimulation` provides:
 3. **Camera System**
    - **Ego Camera**: Mounted on robot body (1280×800, 16:10 aspect ratio)
    - **Top Camera**: Overhead view (1600×1600, square aspect ratio)
-   - Both cameras capture images at 10Hz during experiments
-   - Images saved as JPEG files with timestamped filenames
+   - **Pygame Display**: Real-time dual camera view with aspect ratio preservation
+   - Both cameras capture images at 10Hz during experiments (if enabled)
+   - Images saved as JPEG files with timestamped filenames (if enabled)
 
-4. **Experiment Data Collection**
+4. **Experiment Data Collection** (can be disabled via CLI)
    - **Automatic start**: Data saving begins after first keyboard command
-   - **CSV logging**: Robot and object positions/orientations at 10Hz
-   - **Image capture**: Synchronized ego and top camera images
+   - **CSV logging**: Robot and object positions/orientations at 10Hz (optional)
+   - **Image capture**: Synchronized ego and top camera images (optional)
    - **Configuration save**: Actual values used (not ranges)
    - **Terminal logging**: All console output saved to `terminal.log`
 
@@ -208,23 +229,43 @@ The core simulation class `SpotSimulation` provides:
    - **Object-specific**: 
      - Gate tasks: Robot ↔ Goal distance
      - Box/Sphere tasks: Object ↔ Goal distance
+     - No object: Robot ↔ Goal distance
    - **Completion detection**: Goal turns green when distance < 1.0m
+
+6. **Performance Monitoring**
+   - **Real-time statistics**: Logged at 1Hz (every 500 physics steps)
+   - **Physics step times**: Average, min, max, and effective Hz
+   - **Render times**: Average, min, max, and effective FPS
+   - **Frame times**: Overall loop iteration times
+   - **Performance logging**: Displayed in console/log file
+
+7. **Gate Transform System**
+   - **Automatic application**: Gate transform applied automatically after setup
+   - **Manual trigger**: Press 'G' key in Pygame window to reapply transform
+   - **Visual indicator**: Yellow button label shown when gate exists
 
 #### Configuration
 
 The simulation can be configured via:
-1. **Default values** (hardcoded in `DEFAULT_CONFIG`)
-2. **JSON file** (`config_file` parameter)
-3. **Keyword arguments** (passed to `SpotSimulation()`)
+1. **Command-line arguments** (recommended for quick changes)
+2. **Default values** (hardcoded in `DEFAULT_CONFIG`)
+3. **JSON file** (`config_file` parameter)
+4. **Keyword arguments** (passed to `SpotSimulation()`)
 
-Example:
+**CLI Configuration Example:**
+```bash
+python quadruped_example.py --object-type gate --loglevel DEBUG
+```
+
+**Python API Example:**
 ```python
 sim = SpotSimulation(
     experiment_name="my_test",
     randomize=True,
     map_size=12.0,
-    object_type="gate",  # or "box", "sphere"
-    use_object=True,
+    object_type="gate",  # or "box", "sphere", "none"
+    enable_csv_logging=True,  # Can disable for performance
+    enable_image_saving=True,  # Can disable for performance
     max_vx=2.5
 )
 ```
@@ -380,9 +421,8 @@ The simulation runs at:
 .
 ├── README.md                    # This file (English)
 ├── README_KR.md                 # Korean version
-├── spot_demo.py                 # Simplified demo (minimal setup)
-├── quadruped_example.py         # Main simulation (SpotSimulation class)
-├── plot_experiment.py           # Visualization tool
+├── quadruped_example.py         # Main simulation (SpotSimulation class) ⭐
+├── plot_experiment.py           # Visualization tool ⭐
 ├── keyboard_controller.py       # Pygame keyboard controller
 ├── example_config.json          # Example configuration file
 ├── custom_robots/
@@ -395,33 +435,41 @@ The simulation runs at:
     └── ...
 ```
 
+**Main Components:**
+- ⭐ **`quadruped_example.py`**: Core simulation with CLI interface
+- ⭐ **`plot_experiment.py`**: Experiment visualization and analysis tool
+
 ## Examples
 
-### Simplified Demo
+### Basic Usage (CLI)
 
-```python
-from spot_demo import SpotDemo
+```bash
+# Default configuration
+python quadruped_example.py
 
-# Create simplified demo
-demo = SpotDemo()
-demo.setup()
-demo.run()
-demo.cleanup()
+# Gate navigation task
+python quadruped_example.py --object-type gate
+
+# Box pushing with debug logging
+python quadruped_example.py --object-type box --loglevel DEBUG
+
+# High-performance mode (no logging/saving)
+python quadruped_example.py --object-type none --no-csv-logging --no-image-saving
 ```
 
-### Basic Usage (Full Simulation)
+### Python API Usage
 
 ```python
 from quadruped_example import SpotSimulation
 
-# Create simulation
+# Basic simulation
 sim = SpotSimulation(experiment_name="test_run")
 sim.setup()
 sim.run()
 sim.cleanup()
 ```
 
-### Custom Configuration
+### Custom Configuration (Python API)
 
 ```python
 # Load from JSON
@@ -430,19 +478,36 @@ sim = SpotSimulation(
     experiment_name="custom_test"
 )
 
-# Or override specific values
+# Override specific values
 sim = SpotSimulation(
     experiment_name="gate_navigation",
     randomize=True,
     map_size=15.0,
     object_type="gate",
+    enable_csv_logging=True,
+    enable_image_saving=True,
     max_vx=2.5
+)
+```
+
+### Performance-Optimized Usage
+
+```python
+# Maximum performance (no data logging)
+sim = SpotSimulation(
+    experiment_name="performance_test",
+    enable_csv_logging=False,
+    enable_image_saving=False
 )
 ```
 
 ### Box Pushing Task
 
-```python
+```bash
+# Via CLI
+python quadruped_example.py --object-type box
+
+# Via Python API
 sim = SpotSimulation(
     experiment_name="box_push",
     object_type="box",
@@ -457,35 +522,86 @@ sim = SpotSimulation(
 ### Common Issues
 
 1. **Pygame window not appearing**
-   - Ensure display is available (not headless mode)
-   - Check `headless=False` in `SimulationApp` initialization
+   - Ensure display is available (X11/Wayland)
+   - Simulation runs in headless mode but uses Pygame for display
+   - Check that Pygame can initialize (may need `DISPLAY` environment variable)
 
 2. **Robot not responding**
-   - Verify keyboard controller thread started
-   - Check pygame window has focus
-   - Ensure controller updates in physics callback
+   - Ensure Pygame window has focus (click on it)
+   - Check that keyboard input is working in Pygame window
+   - Verify controller updates in physics callback
 
 3. **No experiment data saved**
    - Data saving starts only after first keyboard command
-   - Check `expr_data/` directory exists
-   - Verify experiment directory was created
+   - Check if CSV logging is disabled (`--no-csv-logging` flag)
+   - Verify `expr_data/` directory exists and is writable
+   - Check experiment directory was created
 
 4. **Camera images not captured**
+   - Check if image saving is disabled (`--no-image-saving` flag)
    - Ensure `omni.replicator` is available
-   - Check camera render products initialized
-   - Verify camera paths are valid
+   - Verify camera render products initialized
+   - Check camera paths are valid
 
-5. **Plot tool errors**
+5. **Ego camera view squished**
+   - Fixed: Ego camera now maintains 16:10 aspect ratio in Pygame window
+   - Camera displays with correct proportions, centered with black bars if needed
+
+6. **Gate transform not applied**
+   - Gate transform is applied automatically after setup
+   - If gate appears in wrong position, press 'G' key in Pygame window
+   - Check logs for gate transform application messages
+
+7. **Plot tool errors**
    - Ensure experiment directory contains `config.json` and `data.csv`
+   - If CSV logging was disabled, `data.csv` won't exist
    - Check camera image directories exist (even if empty)
    - Verify matplotlib backend supports interactive display
 
+8. **Performance issues**
+   - Use `--no-csv-logging` and `--no-image-saving` flags for better performance
+   - Check performance logs in console (logged at 1Hz)
+   - Reduce camera resolution if needed
+   - Disable rendering if not needed (set `enable_rendering=False` in config)
+
 ## Performance
+
+### Simulation Rates
 
 - **Physics**: 500Hz (2ms timestep)
 - **Rendering**: 50Hz (20ms timestep)
-- **Data logging**: 10Hz (100ms interval)
-- **Image capture**: 10Hz (synchronized with logging)
+- **Command update**: 50Hz (every 10 physics steps)
+- **Data logging**: 10Hz (every 50 physics steps, if enabled)
+- **Image capture**: 10Hz (synchronized with logging, if enabled)
+- **Performance logging**: 1Hz (every 500 physics steps)
+
+### Performance Monitoring
+
+The simulation automatically logs performance statistics every second:
+
+```
+[Performance] Physics: 2.000ms avg (1.500-3.200ms), 500.0 Hz | Render: 20.000ms avg (18.500-25.300ms), 50.0 FPS | Frame: 22.500ms avg (20.000-28.000ms), 44.4 FPS
+```
+
+### Performance Optimization
+
+To maximize simulation speed, use the CLI flags:
+
+```bash
+# Disable CSV logging (reduces I/O overhead)
+python quadruped_example.py --no-csv-logging
+
+# Disable image saving (reduces encoding/disk I/O)
+python quadruped_example.py --no-image-saving
+
+# Maximum performance (disable both)
+python quadruped_example.py --no-csv-logging --no-image-saving
+```
+
+**Expected Performance Impact:**
+- CSV logging disabled: ~5-10% performance improvement
+- Image saving disabled: ~10-20% performance improvement
+- Both disabled: ~15-30% performance improvement (depending on hardware)
 
 ## Documentation
 

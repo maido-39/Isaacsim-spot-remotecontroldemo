@@ -2373,22 +2373,73 @@ def main():
     """
     Main entry point for the simulation.
     
-    Command-line arguments:
-        --object-type: Type of object to spawn ("none", "box", "sphere", "gate")
-        --loglevel: Logging level ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    Command-Line Interface (CLI) Usage:
     
-    Usage examples:
+    Basic Usage:
+        python quadruped_example.py
+        python quadruped_example.py --object-type gate
+        python quadruped_example.py --loglevel DEBUG
+    
+    Command-Line Arguments:
+        --object-type {none,box,sphere,gate}
+            Type of object to spawn (default: from config, usually "gate")
+        
+        --loglevel {DEBUG,INFO,WARNING,ERROR,CRITICAL}
+            Logging level (default: "INFO")
+        
+        --no-csv-logging
+            Disable CSV data logging (improves performance)
+        
+        --no-image-saving
+            Disable camera image saving (improves performance)
+    
+    Usage Examples:
+    
     1. Default configuration:
        python quadruped_example.py
     
-    2. With command-line arguments:
+    2. Gate navigation task with debug logging:
        python quadruped_example.py --object-type gate --loglevel DEBUG
     
-    3. Load from JSON file:
-       sim = SpotSimulation(config_file="example_config.json")
+    3. Box pushing task:
+       python quadruped_example.py --object-type box
     
-    4. Override specific values:
-       sim = SpotSimulation(randomize=True, map_size=12.0, experiment_name="my_experiment")
+    4. High-performance mode (no logging/saving):
+       python quadruped_example.py --no-csv-logging --no-image-saving
+    
+    5. Maximum performance with no object:
+       python quadruped_example.py --object-type none --no-csv-logging --no-image-saving
+    
+    6. Combine multiple options:
+       python quadruped_example.py --object-type gate --loglevel INFO --no-image-saving
+    
+    Python API Usage:
+    
+    1. Basic usage:
+       sim = SpotSimulation(experiment_name="test")
+       sim.setup()
+       sim.run()
+       sim.cleanup()
+    
+    2. Load from JSON file:
+       sim = SpotSimulation(config_file="example_config.json", experiment_name="test")
+    
+    3. Override specific values:
+       sim = SpotSimulation(
+           experiment_name="gate_nav",
+           randomize=True,
+           map_size=12.0,
+           object_type="gate",
+           enable_csv_logging=True,
+           enable_image_saving=True
+       )
+    
+    4. Performance-optimized:
+       sim = SpotSimulation(
+           experiment_name="perf_test",
+           enable_csv_logging=False,
+           enable_image_saving=False
+       )
     """
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
