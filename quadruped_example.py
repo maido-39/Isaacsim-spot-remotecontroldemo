@@ -15,14 +15,15 @@
 # Launch Isaac Sim before any other imports
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp({"headless": False})
-
-# Import for GUI button
-import omni.ui as ui
+simulation_app = SimulationApp({"headless": True})  # Headless mode for Pygame display
 
 # SimulationApp 초기화 후에만 다른 모듈을 import할 수 있습니다.
 import numpy as np
 import logging
+import threading
+import queue
+import time
+import pygame
 import sys
 import json
 import os
@@ -104,6 +105,287 @@ DEFAULT_CONFIG = {
 }
 
 
+# ===================== Pygame Display for Dual Camera =====================
+class PygameDualCameraDisplay:
+    """
+    High-performance Pygame display for dual camera streaming (ego + top view).
+    Uses separate thread to avoid blocking main simulation loop.
+    Also handles keyboard input for robot control.
+    """
+    
+    def __init__(self, window_size=(1600, 800), window_title="Spot Robot - Ego & Top View", key_state_callback=None, 
+                 ego_camera_resolution=(1280, 800)):
+        """
+        Initialize dual camera display.
+        
+        Args:
+            window_size: Total window size (width, height) - will be split in half
+            window_title: Window title
+            key_state_callback: Callback function(key, pressed) to update key state
+            ego_camera_resolution: Original ego camera resolution (width, height) for aspect ratio calculation
+        """
+        self.window_size = window_size
+        self.window_title = window_title
+        self.ego_frame_queue = queue.Queue(maxsize=2)  # Keep only latest 2 frames
+        self.top_frame_queue = queue.Queue(maxsize=2)  # Keep only latest 2 frames
+        self.running = False
+        self.display_thread = None
+        self.screen = None
+        self.clock = None
+        self.key_state_callback = key_state_callback  # Callback to update key state
+        self.ego_camera_resolution = ego_camera_resolution  # Store original ego camera resolution
+        
+        # Calculate individual camera display sizes (side by side)
+        self.camera_width = window_size[0] // 2
+        self.camera_height = window_size[1]
+        
+        # Calculate ego camera display size that maintains aspect ratio
+        self._update_ego_display_size()
+        
+    def start(self):
+        """Start display thread"""
+        self.running = True
+        self.display_thread = threading.Thread(target=self._display_loop, daemon=True)
+        self.display_thread.start()
+        time.sleep(0.1)  # Give thread time to initialize
+        print(f"✓ Pygame dual camera display started: {self.window_size[0]}×{self.window_size[1]}")
+    
+    def stop(self):
+        """Stop display thread"""
+        self.running = False
+        if self.display_thread:
+            self.display_thread.join(timeout=1.0)
+        if self.screen:
+            pygame.quit()
+        print("Pygame display stopped")
+    
+    def _update_ego_display_size(self):
+        """Calculate ego camera display size that maintains aspect ratio within available space"""
+        ego_aspect = self.ego_camera_resolution[1] / self.ego_camera_resolution[0]  # height / width
+        available_width = self.camera_width
+        available_height = self.camera_height
+        
+        # Calculate size that fits within available space while maintaining aspect ratio
+        display_width = min(available_width, int(available_height / ego_aspect))
+        display_height = min(available_height, int(available_width * ego_aspect))
+        
+        self.ego_display_size = (display_width, display_height)
+        # Calculate offset to center the image
+        self.ego_display_offset_x = (available_width - display_width) // 2
+        self.ego_display_offset_y = (available_height - display_height) // 2
+    
+    def update_ego_frame(self, image_array):
+        """
+        Update ego camera frame (non-blocking, drops old frames if queue full).
+        Maintains aspect ratio by resizing to fit within available space.
+        
+        Args:
+            image_array: numpy array (H, W, 3) in RGB format
+        """
+        if not self.running:
+            return
+        self._update_frame_queue(self.ego_frame_queue, image_array, self.ego_display_size, maintain_aspect=True)
+    
+    def update_top_frame(self, image_array):
+        """
+        Update top camera frame (non-blocking, drops old frames if queue full)
+        
+        Args:
+            image_array: numpy array (H, W, 3) in RGB format
+        """
+        if not self.running:
+            return
+        self._update_frame_queue(self.top_frame_queue, image_array, (self.camera_width, self.camera_height))
+    
+    def _update_frame_queue(self, frame_queue, image_array, target_size, maintain_aspect=False):
+        """
+        Helper method to update a frame queue
+        
+        Args:
+            frame_queue: Queue to put the surface in
+            image_array: numpy array (H, W, 3) in RGB format
+            target_size: Target size (width, height) for the surface
+            maintain_aspect: If True, resize maintaining aspect ratio (fits within target_size)
+        """
+        try:
+            # Ensure image is in correct format: (H, W, 3) RGB uint8
+            if image_array.dtype != np.uint8:
+                image_array = (image_array * 255).astype(np.uint8) if image_array.max() <= 1.0 else image_array.astype(np.uint8)
+            
+            # Convert to pygame surface
+            # Pygame surfarray.make_surface expects array in (W, H, 3) format
+            # Swap axes: (H, W, 3) -> (W, H, 3)
+            image_swapped = np.swapaxes(image_array, 0, 1)
+            surface = pygame.surfarray.make_surface(image_swapped)
+            
+            # Resize if needed
+            if surface.get_size() != target_size:
+                if maintain_aspect:
+                    # Resize maintaining aspect ratio (smooth scaling)
+                    surface = pygame.transform.smoothscale(surface, target_size)
+                else:
+                    # Resize to exact target size (may distort)
+                    surface = pygame.transform.scale(surface, target_size)
+            
+            # Put in queue (non-blocking, drop if full)
+            try:
+                frame_queue.put_nowait(surface)
+            except queue.Full:
+                # Drop oldest frame and add new one
+                try:
+                    frame_queue.get_nowait()
+                    frame_queue.put_nowait(surface)
+                except queue.Empty:
+                    pass
+        except Exception as e:
+            # Silently ignore conversion errors
+            pass
+    
+    def _display_loop(self):
+        """Display loop running in separate thread"""
+        try:
+            pygame.init()
+            # Enable double buffering and hardware acceleration to prevent flickering
+            flags = pygame.RESIZABLE | pygame.DOUBLEBUF | pygame.HWSURFACE
+            self.screen = pygame.display.set_mode(self.window_size, flags)
+            pygame.display.set_caption(self.window_title)
+            self.clock = pygame.time.Clock()
+            
+            # Target FPS for display (60 FPS for smooth display)
+            target_fps = 60
+            
+            # Font for labels (render once, reuse)
+            font = pygame.font.Font(None, 36)
+            ego_label = font.render("Ego View", True, (255, 255, 255))
+            top_label = font.render("Top View", True, (255, 255, 255))
+            
+            # Create back buffer surface for double buffering
+            back_buffer = pygame.Surface(self.window_size)
+            
+            # Keep track of last surfaces to avoid unnecessary redraws
+            last_ego_surface = None
+            last_top_surface = None
+            
+            while self.running:
+                # Handle pygame events (window close, resize, keyboard, etc.)
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.running = False
+                        if self.key_state_callback:
+                            self.key_state_callback('quit', True)
+                        break
+                    elif event.type == pygame.VIDEORESIZE:
+                        self.window_size = event.size
+                        self.camera_width = self.window_size[0] // 2
+                        self.camera_height = self.window_size[1]
+                        self._update_ego_display_size()  # Recalculate ego display size
+                        flags = pygame.RESIZABLE | pygame.DOUBLEBUF | pygame.HWSURFACE
+                        self.screen = pygame.display.set_mode(self.window_size, flags)
+                        back_buffer = pygame.Surface(self.window_size)
+                    elif event.type == pygame.KEYDOWN:
+                        # Handle key press
+                        if self.key_state_callback:
+                            if event.key == pygame.K_i:
+                                self.key_state_callback('x_pos', True)
+                            elif event.key == pygame.K_k:
+                                self.key_state_callback('x_neg', True)
+                            elif event.key == pygame.K_j:
+                                self.key_state_callback('y_pos', True)
+                            elif event.key == pygame.K_l:
+                                self.key_state_callback('y_neg', True)
+                            elif event.key == pygame.K_u:
+                                self.key_state_callback('yaw_pos', True)
+                            elif event.key == pygame.K_o:
+                                self.key_state_callback('yaw_neg', True)
+                            elif event.key == pygame.K_ESCAPE:
+                                self.key_state_callback('quit', True)
+                                self.running = False
+                    elif event.type == pygame.KEYUP:
+                        # Handle key release
+                        if self.key_state_callback:
+                            if event.key == pygame.K_i:
+                                self.key_state_callback('x_pos', False)
+                            elif event.key == pygame.K_k:
+                                self.key_state_callback('x_neg', False)
+                            elif event.key == pygame.K_j:
+                                self.key_state_callback('y_pos', False)
+                            elif event.key == pygame.K_l:
+                                self.key_state_callback('y_neg', False)
+                            elif event.key == pygame.K_u:
+                                self.key_state_callback('yaw_pos', False)
+                            elif event.key == pygame.K_o:
+                                self.key_state_callback('yaw_neg', False)
+                
+                # Get latest frames from queues (non-blocking, drain queue to get latest)
+                ego_surface = None
+                top_surface = None
+                
+                # Drain queue to get the latest frame (drop old frames)
+                try:
+                    while True:
+                        ego_surface = self.ego_frame_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                
+                try:
+                    while True:
+                        top_surface = self.top_frame_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                
+                # Use last surface if no new frame available
+                if ego_surface is None:
+                    ego_surface = last_ego_surface
+                else:
+                    last_ego_surface = ego_surface
+                
+                if top_surface is None:
+                    top_surface = last_top_surface
+                else:
+                    last_top_surface = top_surface
+                
+                # Draw to back buffer first (double buffering)
+                back_buffer.fill((0, 0, 0))  # Black background
+                
+                # Display ego camera (left side) - centered to maintain aspect ratio
+                if ego_surface:
+                    back_buffer.blit(ego_surface, (self.ego_display_offset_x, self.ego_display_offset_y))
+                else:
+                    # Placeholder if no frame
+                    pygame.draw.rect(back_buffer, (50, 50, 50), 
+                                   (self.ego_display_offset_x, self.ego_display_offset_y, 
+                                    self.ego_display_size[0], self.ego_display_size[1]))
+                
+                # Display top camera (right side)
+                if top_surface:
+                    back_buffer.blit(top_surface, (self.camera_width, 0))
+                else:
+                    # Placeholder if no frame
+                    pygame.draw.rect(back_buffer, (50, 50, 50), (self.camera_width, 0, self.camera_width, self.camera_height))
+                
+                # Draw labels
+                back_buffer.blit(ego_label, (10, 10))
+                back_buffer.blit(top_label, (self.camera_width + 10, 10))
+                
+                # Draw divider line
+                pygame.draw.line(back_buffer, (100, 100, 100), 
+                               (self.camera_width, 0), 
+                               (self.camera_width, self.camera_height), 2)
+                
+                # Blit back buffer to screen (single operation, no flicker)
+                self.screen.blit(back_buffer, (0, 0))
+                pygame.display.flip()
+                
+                # Limit to target FPS
+                self.clock.tick(target_fps)
+                
+        except Exception as e:
+            print(f"Pygame display error: {e}")
+        finally:
+            if self.screen:
+                pygame.quit()
+
+
 # ===================== Main Simulation Class =====================
 class SpotSimulation:
     """Main simulation class for Isaac Sim Spot robot control"""
@@ -144,6 +426,7 @@ class SpotSimulation:
         self.robot_camera_path = None   # Path to robot ego-view camera
         self._gate_button_window = None # GUI window for gate transform control
         self.task_in_progress = True    # Flag to track if task is in progress
+        self.display = None             # Pygame dual camera display
         
         # Experiment data tracking
         self.experiment_name = experiment_name if experiment_name else "NULL"
@@ -1169,37 +1452,11 @@ class SpotSimulation:
         """
         Create a GUI button to apply Gate transform.
         The button will appear in a floating window.
+        Note: Disabled in headless mode (uses Pygame display instead).
         """
-        if not hasattr(self, '_gate_button_window') or self._gate_button_window is None:
-            self._gate_button_window = ui.Window("Gate Transform Control", width=300, height=150)
-            
-            with self._gate_button_window.frame:
-                with ui.VStack(spacing=10):
-                    ui.Label("Gate Transform Control", alignment=ui.Alignment.CENTER)
-                    ui.Spacer(height=5)
-                    
-                    with ui.HStack(spacing=5):
-                        ui.Label("Status:", width=60)
-                        self._gate_status_label = ui.Label("Waiting...", word_wrap=True)
-                    
-                    ui.Spacer(height=5)
-                    
-                    def on_apply_transform():
-                        self.logger.info("Apply Transform button clicked!")
-                        success = self.apply_gate_transform()
-                        if success:
-                            self._gate_status_label.text = "Transform applied!"
-                        else:
-                            self._gate_status_label.text = "Failed to apply"
-                    
-                    ui.Button("Apply Gate Transform", clicked_fn=on_apply_transform, height=40)
-                    
-                    ui.Spacer(height=5)
-                    ui.Label("Click after GateL/GateR generation", alignment=ui.Alignment.CENTER, word_wrap=True)
-            
-            self.logger.info("Gate Transform Control window created")
-        else:
-            self.logger.info("Gate Transform Control window already exists")
+        # Skip GUI button creation in headless mode
+        self.logger.info("Gate transform button disabled in headless mode (use Pygame display window)")
+        return
 
     # ===================== Environment Setup =====================
     def setup_environment(self):
@@ -1563,6 +1820,7 @@ class SpotSimulation:
     def _open_robot_camera_viewport(self, camera_path):
         """
         Open a new viewport window showing the robot's ego-view camera.
+        Note: This is for Isaac Sim viewport (not used when Pygame display is active).
         """
         try:
             from isaacsim.core.utils.viewports import create_viewport_for_camera
@@ -1586,19 +1844,84 @@ class SpotSimulation:
     def _set_default_viewport_camera(self, camera_path):
         """
         Set the top camera as the default viewport camera (replaces main scene view).
+        Note: Disabled in headless mode with Pygame display.
         """
+        # Skip viewport setup in headless mode (we use Pygame display instead)
+        pass
+    
+    def get_ego_camera_image(self):
+        """
+        Get current frame from ego camera for Pygame display.
+        
+        Returns:
+            numpy.ndarray: RGB image array (H, W, 3) or None if not available
+        """
+        if not hasattr(self, 'camera_render_initialized') or not self.camera_render_initialized:
+            return None
+        
+        if "ego" not in self.rgb_annotators:
+            return None
+        
         try:
-            import omni.kit.viewport.utility as vp_utils
+            rgb_data = self.rgb_annotators["ego"].get_data()
+            if rgb_data is None:
+                return None
             
-            viewport = vp_utils.get_active_viewport()
-            if viewport:
-                viewport.set_active_camera(camera_path)
-                self.logger.info(f"✓ Top camera set as default viewport camera")
-            else:
-                self.logger.warning("No active viewport found to set camera")
-                
+            # Convert to numpy array
+            image_array = np.asarray(rgb_data)
+            
+            # Check if we have valid image data
+            if image_array is None or image_array.size == 0:
+                return None
+            
+            # Handle RGBA to RGB conversion if needed
+            if len(image_array.shape) == 3 and image_array.shape[2] == 4:
+                # Convert RGBA to RGB
+                image_array = image_array[:, :, :3]
+            
+            # Ensure RGB format (not BGR)
+            return image_array
+            
         except Exception as e:
-            self.logger.warning(f"Failed to set default viewport camera: {e}")
+            # Silently return None on error (avoid spam during shutdown)
+            return None
+    
+    def get_top_camera_image(self):
+        """
+        Get current frame from top camera for Pygame display.
+        
+        Returns:
+            numpy.ndarray: RGB image array (H, W, 3) or None if not available
+        """
+        if not hasattr(self, 'camera_render_initialized') or not self.camera_render_initialized:
+            return None
+        
+        if "top" not in self.rgb_annotators:
+            return None
+        
+        try:
+            rgb_data = self.rgb_annotators["top"].get_data()
+            if rgb_data is None:
+                return None
+            
+            # Convert to numpy array
+            image_array = np.asarray(rgb_data)
+            
+            # Check if we have valid image data
+            if image_array is None or image_array.size == 0:
+                return None
+            
+            # Handle RGBA to RGB conversion if needed
+            if len(image_array.shape) == 3 and image_array.shape[2] == 4:
+                # Convert RGBA to RGB
+                image_array = image_array[:, :, :3]
+            
+            # Ensure RGB format (not BGR)
+            return image_array
+            
+        except Exception as e:
+            # Silently return None on error (avoid spam during shutdown)
+            return None
 
     def _on_physics_step(self, step_size):
         """
@@ -1775,28 +2098,33 @@ class SpotSimulation:
         # Create ego-view camera attached to robot base (after world reset, robot is fully initialized)
         self._setup_robot_camera()
         
-        # Open ego camera viewport window (after world reset, viewport system should be ready)
-        if hasattr(self, 'robot_camera_path') and self.robot_camera_path:
-            self.logger.info("Opening robot ego-view viewport...")
-            self._open_robot_camera_viewport(self.robot_camera_path)
-        else:
-            self.logger.warning("Cannot open ego-view viewport - camera path not available")
-        
-        # Set top camera as default viewport camera (replaces main scene view)
-        if hasattr(self, 'camera_path') and self.camera_path:
-            self._set_default_viewport_camera(self.camera_path)
-        else:
-            self.logger.warning("Cannot set top camera as default viewport - camera path not available")
-        
         # Initialize camera render products (once, after cameras are set up)
-        # This ensures consistency between viewport and captured images
+        # This enables camera image capture for Pygame display
         self._initialize_camera_render_products()
+        
+        # Create callback function to update controller key state from pygame window
+        def update_key_state(key, pressed):
+            with self.controller._state_lock:
+                if key in self.controller._key_state:
+                    self.controller._key_state[key] = pressed
+        
+        # Initialize Pygame dual camera display
+        window_width = 1600  # Total width for side-by-side display
+        window_height = 800  # Height (matches ego camera aspect ratio)
+        ego_res = self.config["ego_camera_resolution"]
+        self.display = PygameDualCameraDisplay(
+            window_size=(window_width, window_height),
+            window_title="Spot Robot - Ego & Top View (i/j/k/l: x,y | u/o: yaw | ESC: quit)",
+            key_state_callback=update_key_state,
+            ego_camera_resolution=ego_res
+        )
+        self.display.start()
         
         # Register physics callback for robot control and logging
         self.world.add_physics_callback("physics_step", callback_fn=self._on_physics_step)
         
-        # Start keyboard controller (runs in separate thread)
-        self.controller.start()
+        # Note: We don't call controller.start() because we handle keyboard input in display window
+        # The controller.update() is called in _on_physics_step callback
         
         self.logger.info("Setup complete")
 
@@ -1804,29 +2132,52 @@ class SpotSimulation:
         """
         Run main simulation loop.
         Steps physics and rendering until simulation is stopped or quit is requested.
+        Updates Pygame display with camera frames.
         """
         if self.world is None or self.spot is None or self.controller is None:
             raise RuntimeError("Simulation must be setup first")
         
         self.logger.info("Starting simulation...")
         self.logger.info("Controls: i/k (x), j/l (y), u/o (yaw), ESC (quit)")
+        self.logger.info("Camera views displayed in Pygame window (smooth 50+ FPS)")
         
         # Main simulation loop
         while simulation_app.is_running():
-            # Check if quit requested from keyboard controller
+            # Check if quit requested from keyboard controller or display window
             if self.controller.is_quit_requested():
                 break
+            
+            # Check if Pygame window was closed
+            if self.display and not self.display.running:
+                self.logger.info("Pygame window closed - quitting...")
+                break
+            
             # Step physics and rendering
             self.world.step(render=True)
+            
+            # Update Pygame display with camera frames (every frame for smooth display)
+            if self.display:
+                ego_image = self.get_ego_camera_image()
+                if ego_image is not None:
+                    self.display.update_ego_frame(ego_image)
+                
+                top_image = self.get_top_camera_image()
+                if top_image is not None:
+                    self.display.update_top_frame(top_image)
 
     def cleanup(self):
         """
         Cleanup resources: stop controller, close CSV file, detach annotators, and remove physics callback.
         Should be called after simulation ends.
         """
-        # Stop keyboard controller thread
+        # Stop Pygame display
+        if self.display:
+            self.display.stop()
+        
+        # Mark controller as stopped (we didn't start a separate thread, but set quit flag)
         if self.controller:
-            self.controller.stop()
+            with self.controller._state_lock:
+                self.controller._key_state['quit'] = True
         
         # Close CSV file
         if self.csv_file:
