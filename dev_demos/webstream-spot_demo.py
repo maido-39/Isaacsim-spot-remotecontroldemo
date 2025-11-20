@@ -14,7 +14,7 @@ Spot robot demo with keyboard control, sample box, and top-view camera for web s
 # Launch Isaac Sim before any other imports
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp({"headless": True})  # Run in headless mode for web streaming
 
 # SimulationApp 초기화 후에만 다른 모듈을 import할 수 있습니다.
 import sys
@@ -31,24 +31,150 @@ import omni.kit.commands
 from isaacsim.core.api import World
 from isaacsim.core.api.objects import DynamicCuboid
 from isaacsim.robot.policy.examples.robots import SpotFlatTerrainPolicy
+import threading
+import time
+import io
+from flask import Flask, Response, render_template_string, request, jsonify
+from PIL import Image
 from keyboard_controller import KeyboardController
+
+
+class WebController:
+    """
+    Web-based controller that accepts commands via HTTP API.
+    Provides same interface as KeyboardController but for web control.
+    """
+    
+    def __init__(
+        self,
+        max_vx: float = 2.0,
+        max_vy: float = 2.0,
+        max_yaw: float = 2.0,
+        acc_vx: float = 5.0,
+        acc_vy: float = 5.0,
+        acc_yaw: float = 10.0,
+        decay_vx: float = 0.7,
+        decay_vy: float = 0.7,
+        decay_yaw: float = 0.6,
+        update_dt: float = 0.02,
+        eps_linear: float = 0.001,
+        eps_angular: float = 0.001,
+    ):
+        """Initialize web controller with same parameters as KeyboardController"""
+        self.max_vx = max_vx
+        self.max_vy = max_vy
+        self.max_yaw = max_yaw
+        self.acc_vx = acc_vx
+        self.acc_vy = acc_vy
+        self.acc_yaw = acc_yaw
+        self.decay_vx = decay_vx
+        self.decay_vy = decay_vy
+        self.decay_yaw = decay_yaw
+        self.update_dt = update_dt
+        self.eps_linear = eps_linear
+        self.eps_angular = eps_angular
+        
+        # Web command state (set via HTTP API)
+        self._key_state = {
+            'x_pos': False,
+            'x_neg': False,
+            'y_pos': False,
+            'y_neg': False,
+            'yaw_pos': False,
+            'yaw_neg': False,
+            'quit': False
+        }
+        self._state_lock = threading.Lock()
+        
+        # Accumulated command state
+        self._vx_cmd = 0.0
+        self._vy_cmd = 0.0
+        self._yaw_cmd = 0.0
+    
+    def set_key_state(self, key: str, pressed: bool):
+        """Set key state from web API"""
+        with self._state_lock:
+            if key in self._key_state:
+                self._key_state[key] = pressed
+    
+    def get_command(self) -> np.ndarray:
+        """Get current command [vx, vy, yaw]"""
+        return np.array([self._vx_cmd, self._vy_cmd, self._yaw_cmd])
+    
+    def update(self):
+        """Update commands based on key state (same logic as KeyboardController)"""
+        with self._state_lock:
+            in_x = float(self._key_state['x_pos']) - float(self._key_state['x_neg'])
+            in_y = float(self._key_state['y_pos']) - float(self._key_state['y_neg'])
+            in_yaw = float(self._key_state['yaw_pos']) - float(self._key_state['yaw_neg'])
+        
+        # Integrate acceleration & apply decay
+        if in_x != 0.0:
+            self._vx_cmd += in_x * self.acc_vx * self.update_dt
+        else:
+            self._vx_cmd *= self.decay_vx
+            
+        if in_y != 0.0:
+            self._vy_cmd += in_y * self.acc_vy * self.update_dt
+        else:
+            self._vy_cmd *= self.decay_vy
+            
+        if in_yaw != 0.0:
+            self._yaw_cmd += in_yaw * self.acc_yaw * self.update_dt
+        else:
+            self._yaw_cmd *= self.decay_yaw
+        
+        # Clamp speeds
+        self._vx_cmd = max(-self.max_vx, min(self.max_vx, self._vx_cmd))
+        self._vy_cmd = max(-self.max_vy, min(self.max_vy, self._vy_cmd))
+        self._yaw_cmd = max(-self.max_yaw, min(self.max_yaw, self._yaw_cmd))
+        
+        # Zero out small values
+        if abs(self._vx_cmd) < self.eps_linear:
+            self._vx_cmd = 0.0
+        if abs(self._vy_cmd) < self.eps_linear:
+            self._vy_cmd = 0.0
+        if abs(self._yaw_cmd) < self.eps_angular:
+            self._yaw_cmd = 0.0
+    
+    def is_quit_requested(self) -> bool:
+        """Check if quit is requested"""
+        with self._state_lock:
+            return self._key_state['quit']
+    
+    def start(self):
+        """Start controller (no-op for web controller)"""
+        pass
+    
+    def stop(self):
+        """Stop controller"""
+        with self._state_lock:
+            self._key_state['quit'] = True
 
 
 class WebStreamSpotDemo:
     """Spot robot demo with keyboard control, sample box, and top-view camera for web streaming"""
 
-    def __init__(self):
+    def __init__(self, web_port=5000):
         """Initialize the demo"""
         self.world = None
         self.stage = None
         self.spot = None
-        self.controller = None
+        self.keyboard_controller = None  # Local keyboard controller
+        self.web_controller = None  # Web-based controller
         self.physics_ready = False
         self.command_counter = 0
         self.camera_path = None  # Top camera path
         self.render_products = {}  # Camera render products for streaming
         self.rgb_annotators = {}  # RGB annotators for camera capture
         self.camera_render_initialized = False
+        
+        # Web server setup
+        self.web_port = web_port
+        self.app = Flask(__name__)
+        self.latest_frame = None
+        self.frame_lock = threading.Lock()
+        self._setup_flask_routes()
 
     def initialize(self):
         """Initialize Isaac Sim world and stage"""
@@ -148,19 +274,160 @@ class WebStreamSpotDemo:
     def _set_default_viewport_camera(self, camera_path):
         """
         Set the top camera as the default viewport camera (replaces main scene view).
+        Note: In headless mode, viewport is not available.
         """
-        try:
-            import omni.kit.viewport.utility as vp_utils
+        # Skip in headless mode
+        pass
+
+    def _setup_flask_routes(self):
+        """Setup Flask routes for web streaming and control"""
+        
+        HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Spot Robot Web Stream</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        .video-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+        img {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
+        .status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border-radius: 4px;
+            font-size: 12px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <img id="videoStream" src="/video_feed" alt="Camera Feed">
+    </div>
+    
+    <div class="status">
+        <div>Status: <span id="status">Connected</span></div>
+        <div>Commands: <span id="commands">vx: 0.00, vy: 0.00, yaw: 0.00</span></div>
+    </div>
+    
+    <script>
+        // Keyboard controls
+        const keyMap = {
+            'i': 'x_pos', 'I': 'x_pos',
+            'k': 'x_neg', 'K': 'x_neg',
+            'j': 'y_pos', 'J': 'y_pos',
+            'l': 'y_neg', 'L': 'y_neg',
+            'u': 'yaw_pos', 'U': 'yaw_pos',
+            'o': 'yaw_neg', 'O': 'yaw_neg'
+        };
+        
+        document.addEventListener('keydown', (e) => {
+            if (keyMap[e.key]) {
+                sendCommand(keyMap[e.key], true);
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (keyMap[e.key]) {
+                sendCommand(keyMap[e.key], false);
+            }
+        });
+        
+        function sendCommand(key, pressed) {
+            fetch('/control', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({key: key, pressed: pressed})
+            }).catch(err => console.error('Command error:', err));
+        }
+        
+        // Update command status
+        setInterval(() => {
+            fetch('/status')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('commands').textContent = 
+                        `vx: ${data.vx.toFixed(2)}, vy: ${data.vy.toFixed(2)}, yaw: ${data.yaw.toFixed(2)}`;
+                })
+                .catch(err => console.error('Status error:', err));
+        }, 100);
+    </script>
+</body>
+</html>
+"""
+        
+        @self.app.route('/')
+        def index():
+            return render_template_string(HTML_TEMPLATE)
+        
+        @self.app.route('/video_feed')
+        def video_feed():
+            """Video streaming route"""
+            def generate():
+                while True:
+                    with self.frame_lock:
+                        if self.latest_frame is not None:
+                            # Convert numpy array to JPEG
+                            img = Image.fromarray(self.latest_frame)
+                            buf = io.BytesIO()
+                            img.save(buf, format='JPEG', quality=85)
+                            frame = buf.getvalue()
+                            yield (b'--frame\r\n'
+                                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                    time.sleep(0.033)  # ~30 FPS
             
-            viewport = vp_utils.get_active_viewport()
-            if viewport:
-                viewport.set_active_camera(camera_path)
-                print(f"✓ Top camera set as default viewport camera")
-            else:
-                print("Warning: No active viewport found to set camera")
-                
-        except Exception as e:
-            print(f"Warning: Failed to set default viewport camera: {e}")
+            return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        
+        @self.app.route('/control', methods=['POST'])
+        def control():
+            """Handle control commands from web"""
+            data = request.json
+            key = data.get('key')
+            pressed = data.get('pressed', False)
+            
+            if self.web_controller and hasattr(self.web_controller, 'set_key_state'):
+                self.web_controller.set_key_state(key, pressed)
+                return jsonify({'status': 'ok'})
+            return jsonify({'status': 'error', 'message': 'Web controller not available'}), 400
+        
+        @self.app.route('/status')
+        def status():
+            """Get current robot status"""
+            # Get merged command from both controllers
+            cmd = self._get_merged_command()
+            return jsonify({
+                'vx': float(cmd[0]),
+                'vy': float(cmd[1]),
+                'yaw': float(cmd[2])
+            })
 
     def setup_environment(self):
         """Setup basic environment: ground, sample box, and top-view camera"""
@@ -262,21 +529,47 @@ class WebStreamSpotDemo:
         )
         print("Spot robot placed at origin")
 
+    def _get_merged_command(self):
+        """
+        Merge commands from both keyboard and web controllers.
+        Takes the maximum absolute value from each controller for each axis.
+        """
+        kbd_cmd = np.array([0.0, 0.0, 0.0])
+        web_cmd = np.array([0.0, 0.0, 0.0])
+        
+        if self.keyboard_controller:
+            kbd_cmd = self.keyboard_controller.get_command()
+        if self.web_controller:
+            web_cmd = self.web_controller.get_command()
+        
+        # Merge: take the maximum absolute value, preserving sign
+        merged = np.array([
+            kbd_cmd[0] if abs(kbd_cmd[0]) > abs(web_cmd[0]) else web_cmd[0],
+            kbd_cmd[1] if abs(kbd_cmd[1]) > abs(web_cmd[1]) else web_cmd[1],
+            kbd_cmd[2] if abs(kbd_cmd[2]) > abs(web_cmd[2]) else web_cmd[2]
+        ])
+        
+        return merged
+
     def _on_physics_step(self, step_size):
         """
         Physics step callback - called every physics timestep (500Hz).
         Handles command updates (50Hz) and robot control.
         """
-        # Command update: update controller at 50Hz (every 10 physics steps)
+        # Command update: update both controllers at 50Hz (every 10 physics steps)
         self.command_counter += 1
         if self.command_counter >= 10:
             self.command_counter = 0
-            self.controller.update()  # Update controller state based on keyboard input
+            if self.keyboard_controller:
+                self.keyboard_controller.update()  # Update keyboard controller
+            if self.web_controller:
+                self.web_controller.update()  # Update web controller
 
-        # Robot control: apply commands to robot
+        # Robot control: apply merged commands to robot
         if self.physics_ready:
-            # Robot is initialized, apply forward control with current command
-            self.spot.forward(step_size, self.controller.get_command())
+            # Robot is initialized, apply forward control with merged command
+            merged_cmd = self._get_merged_command()
+            self.spot.forward(step_size, merged_cmd)
         else:
             # First physics step: initialize robot
             self.physics_ready = True
@@ -330,8 +623,16 @@ class WebStreamSpotDemo:
         # Setup robot at origin
         self.setup_robot()
 
-        # Create keyboard controller
-        self.controller = KeyboardController(
+        # Create local keyboard controller
+        self.keyboard_controller = KeyboardController(
+            max_vx=2.0, max_vy=2.0, max_yaw=2.0,
+            acc_vx=5.0, acc_vy=5.0, acc_yaw=10.0,
+            decay_vx=0.7, decay_vy=0.7, decay_yaw=0.6,
+            update_dt=0.02  # 50Hz update rate
+        )
+
+        # Create web controller for web-based control
+        self.web_controller = WebController(
             max_vx=2.0, max_vy=2.0, max_yaw=2.0,
             acc_vx=5.0, acc_vy=5.0, acc_yaw=10.0,
             decay_vx=0.7, decay_vy=0.7, decay_yaw=0.6,
@@ -341,49 +642,74 @@ class WebStreamSpotDemo:
         # Reset world (required before querying articulation properties)
         self.world.reset()
 
-        # Set top camera as default viewport camera (optional)
-        if self.camera_path:
-            self._set_default_viewport_camera(self.camera_path)
-
         # Initialize camera render products for web streaming
         self._initialize_camera_render_products()
 
         # Register physics callback for robot control
         self.world.add_physics_callback("physics_step", callback_fn=self._on_physics_step)
 
-        # Start keyboard controller (runs in separate thread)
-        self.controller.start()
+        # Start keyboard controller (runs in separate thread for local keyboard input)
+        self.keyboard_controller.start()
+
+        # Start web controller
+        self.web_controller.start()
+
+        # Start Flask web server in separate thread
+        self._start_web_server()
 
         print("Setup complete")
+        print(f"Web server running at http://localhost:{self.web_port}")
+        print("Local keyboard controls: i/k (x), j/l (y), u/o (yaw), ESC (quit)")
+
+    def _start_web_server(self):
+        """Start Flask web server in a separate thread"""
+        def run_flask():
+            self.app.run(host='0.0.0.0', port=self.web_port, debug=False, use_reloader=False, threaded=True)
+        
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        time.sleep(1)  # Give server time to start
+        print(f"✓ Web server started on port {self.web_port}")
 
     def run(self):
         """Run main simulation loop"""
-        if self.world is None or self.spot is None or self.controller is None:
+        if self.world is None or self.spot is None:
             raise RuntimeError("Simulation must be setup first")
 
         print("Starting simulation...")
-        print("Controls: i/k (x), j/l (y), u/o (yaw), ESC (quit)")
-        print("Top camera is ready for web streaming")
+        print(f"Web interface available at http://localhost:{self.web_port}")
+        print("Local keyboard controls: i/k (x), j/l (y), u/o (yaw), ESC (quit)")
+        print("Web controls: Use web interface buttons or keyboard in browser")
 
+        frame_counter = 0
+        
         # Main simulation loop
         while simulation_app.is_running():
-            # Check if quit requested from keyboard controller
-            if self.controller.is_quit_requested():
+            # Check if quit requested from keyboard controller (local)
+            if self.keyboard_controller and self.keyboard_controller.is_quit_requested():
                 break
+            
             # Step physics and rendering
             self.world.step(render=True)
             
-            # Example: Get camera image for streaming (uncomment to use)
-            # top_image = self.get_top_camera_image()
-            # if top_image is not None:
-            #     # Process image for web streaming here
-            #     pass
+            # Capture camera frame for web streaming (every 3 frames = ~16 FPS)
+            frame_counter += 1
+            if frame_counter >= 3:
+                frame_counter = 0
+                top_image = self.get_top_camera_image()
+                if top_image is not None:
+                    with self.frame_lock:
+                        self.latest_frame = top_image.copy()
 
     def cleanup(self):
-        """Cleanup resources: stop controller, detach camera annotators, and remove physics callback"""
-        # Stop keyboard controller thread
-        if self.controller:
-            self.controller.stop()
+        """Cleanup resources: stop controllers, detach camera annotators, and remove physics callback"""
+        # Stop keyboard controller thread (local)
+        if self.keyboard_controller:
+            self.keyboard_controller.stop()
+        
+        # Stop web controller
+        if self.web_controller:
+            self.web_controller.stop()
 
         # Cleanup camera render products and annotators
         if self.camera_render_initialized:
@@ -405,8 +731,14 @@ class WebStreamSpotDemo:
 # ===================== Main Entry Point =====================
 def main():
     """Main entry point for the demo"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Spot Robot Web Streaming Demo")
+    parser.add_argument('--port', type=int, default=5000, help='Web server port (default: 5000)')
+    args = parser.parse_args()
+    
     # Create demo instance
-    demo = WebStreamSpotDemo()
+    demo = WebStreamSpotDemo(web_port=args.port)
 
     # Setup simulation (environment, robot, controller, cameras)
     demo.setup()

@@ -59,11 +59,9 @@ This project provides a complete simulation environment for the Spot robot featu
 2. **Install Python dependencies & Isaacsim 4.5.0**:
    ```bash
    # Install Isaacsim
-   pip install isaacsim-rl==4.1.0 isaacsim-replicator==4.1.0 isaacsim-extscache-physics==4.1.0 isaacsim-extscache-kit-sdk==4.1.0 isaacsim-extscache-kit==4.1.0 isaacsim-app==4.1.0 --extra-index-url https://pypi.nvidia.com
+   pip install "isaacsim[all,extscache]==4.5.0" --extra-index-url https://pypi.nvidia.com
    # Install Deps
-   pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cu121 
    pip install pygame numpy pandas matplotlib pillow
-   pip install tensordict==0.3.2
    ```
 
 4. **Verify installation**:
