@@ -418,7 +418,8 @@ class PygameDualCameraDisplay:
 class SpotSimulation:
     """Main simulation class for Isaac Sim Spot robot control"""
 
-    def __init__(self, config_file=None, experiment_name=None, log_level=logging.INFO, **config_overrides):
+    def __init__(self, config_file=None, experiment_name=None, log_level=logging.INFO, 
+                 enable_csv_logging=True, enable_image_saving=True, **config_overrides):
         """
         Initialize simulation.
     
@@ -426,6 +427,8 @@ class SpotSimulation:
             config_file: Path to JSON config file (optional)
             experiment_name: Name of the experiment (optional, defaults to "NULL")
             log_level: Logging level (default: logging.INFO)
+            enable_csv_logging: Enable CSV data logging (default: True)
+            enable_image_saving: Enable camera image saving (default: True)
             **config_overrides: Override any config values
         """
         # Load configuration: start with defaults, then load from file if provided, then apply overrides
@@ -475,6 +478,10 @@ class SpotSimulation:
         self.experiment_start_time = None  # Experiment start timestamp
         self.data_saving_started = False   # Flag to track if data saving has started
         self.first_command_received = False  # Flag to track first keyboard command
+        
+        # Performance flags (can be set via command-line args)
+        self.enable_csv_logging = enable_csv_logging   # Enable/disable CSV logging
+        self.enable_image_saving = enable_image_saving  # Enable/disable image saving
 
     def _setup_logging(self, log_level=logging.INFO):
         """
@@ -552,8 +559,10 @@ class SpotSimulation:
         # Create directory structure
         try:
             self.experiment_dir.mkdir(exist_ok=True)
-            (self.experiment_dir / "camera" / "ego").mkdir(parents=True, exist_ok=True)
-            (self.experiment_dir / "camera" / "top").mkdir(parents=True, exist_ok=True)
+            # Only create camera directories if image saving is enabled
+            if self.enable_image_saving:
+                (self.experiment_dir / "camera" / "ego").mkdir(parents=True, exist_ok=True)
+                (self.experiment_dir / "camera" / "top").mkdir(parents=True, exist_ok=True)
             
             self.logger.info(f"Experiment directory created: {self.experiment_dir}")
             
@@ -564,23 +573,26 @@ class SpotSimulation:
             # Save configuration file (actual values used, not ranges)
             self._save_config()
             
-            # Initialize CSV file
-            csv_path = self.experiment_dir / "data.csv"
-            self.csv_file = open(csv_path, 'w', newline='')
-            self.csv_writer = csv.writer(self.csv_file)
-            
-            # Write CSV header
-            self.csv_writer.writerow([
-                'timestamp', 'frame_num',
-                'robot_pos_x', 'robot_pos_y', 'robot_pos_z',
-                'robot_orient_w', 'robot_orient_x', 'robot_orient_y', 'robot_orient_z',
-                'object_pos_x', 'object_pos_y', 'object_pos_z',
-                'object_orient_w', 'object_orient_x', 'object_orient_y', 'object_orient_z',
-                'l1_distance_to_goal'  # L1 norm: robot<->goal (gate) or box<->goal (box)
-            ])
-            self.csv_file.flush()
-            
-            self.logger.info(f"CSV file initialized: {csv_path}")
+            # Initialize CSV file (only if CSV logging is enabled)
+            if self.enable_csv_logging:
+                csv_path = self.experiment_dir / "data.csv"
+                self.csv_file = open(csv_path, 'w', newline='')
+                self.csv_writer = csv.writer(self.csv_file)
+                
+                # Write CSV header
+                self.csv_writer.writerow([
+                    'timestamp', 'frame_num',
+                    'robot_pos_x', 'robot_pos_y', 'robot_pos_z',
+                    'robot_orient_w', 'robot_orient_x', 'robot_orient_y', 'robot_orient_z',
+                    'object_pos_x', 'object_pos_y', 'object_pos_z',
+                    'object_orient_w', 'object_orient_x', 'object_orient_y', 'object_orient_z',
+                    'l1_distance_to_goal'  # L1 norm: robot<->goal (gate) or box<->goal (box)
+                ])
+                self.csv_file.flush()
+                
+                self.logger.info(f"CSV file initialized: {csv_path}")
+            else:
+                self.logger.info("CSV logging disabled")
             
         except Exception as e:
             self.logger.error(f"Failed to create experiment directory: {e}")
@@ -761,7 +773,11 @@ class SpotSimulation:
             object_quat: Object orientation quaternion [w, x, y, z]
             l1_distance: L1 distance to goal (robot<->goal for gate, box<->goal for box)
         """
-        if self.csv_writer is None:
+        # Skip if CSV logging is disabled
+        if not self.enable_csv_logging or self.csv_writer is None:
+            # Still increment frame counter for consistency
+            if not self.enable_csv_logging:
+                self.frame_counter += 1
             return
         
         try:
@@ -769,21 +785,23 @@ class SpotSimulation:
             elapsed = (datetime.now() - self.experiment_start_time).total_seconds()
             timestamp_str = f"{elapsed:.3f}"
             
-            # Write CSV row
-            self.csv_writer.writerow([
-                timestamp_str, self.frame_counter,
-                robot_pos[0], robot_pos[1], robot_pos[2],
-                robot_quat[0], robot_quat[1], robot_quat[2], robot_quat[3],
-                object_pos[0], object_pos[1], object_pos[2],
-                object_quat[0], object_quat[1], object_quat[2], object_quat[3],
-                l1_distance
-            ])
+            # Write CSV row (only if CSV logging is enabled)
+            if self.enable_csv_logging:
+                self.csv_writer.writerow([
+                    timestamp_str, self.frame_counter,
+                    robot_pos[0], robot_pos[1], robot_pos[2],
+                    robot_quat[0], robot_quat[1], robot_quat[2], robot_quat[3],
+                    object_pos[0], object_pos[1], object_pos[2],
+                    object_quat[0], object_quat[1], object_quat[2], object_quat[3],
+                    l1_distance
+                ])
+                
+                # Flush every 10 frames to ensure data is written
+                if self.frame_counter % 10 == 0:
+                    self.csv_file.flush()
             
-            # Flush every 10 frames to ensure data is written
-            if self.frame_counter % 10 == 0:
-                self.csv_file.flush()
-            
-            # Save camera images
+            # Save camera images (only if image saving is enabled)
+            if self.enable_image_saving:
                 if self.robot_camera_path:
                     self._save_camera_image(self.robot_camera_path, "ego", self.frame_counter, timestamp_str)
                 if hasattr(self, 'camera_path') and self.camera_path:
@@ -2211,6 +2229,43 @@ class SpotSimulation:
             self.apply_gate_transform()
         
         self.logger.info("Setup complete")
+    
+    def _log_performance_stats(self):
+        """
+        Log performance statistics (called at 1Hz).
+        Calculates and logs average, min, max times for physics, rendering, and frames.
+        """
+        if not self.physics_step_times and not self.render_times and not self.frame_times:
+            return  # No data yet
+        
+        stats = []
+        
+        # Physics step statistics
+        if self.physics_step_times:
+            physics_avg = np.mean(self.physics_step_times)
+            physics_min = np.min(self.physics_step_times)
+            physics_max = np.max(self.physics_step_times)
+            physics_fps = 1000.0 / physics_avg if physics_avg > 0 else 0
+            stats.append(f"Physics: {physics_avg:.3f}ms avg ({physics_min:.3f}-{physics_max:.3f}ms), {physics_fps:.1f} Hz")
+        
+        # Render step statistics
+        if self.render_times:
+            render_avg = np.mean(self.render_times)
+            render_min = np.min(self.render_times)
+            render_max = np.max(self.render_times)
+            render_fps = 1000.0 / render_avg if render_avg > 0 else 0
+            stats.append(f"Render: {render_avg:.3f}ms avg ({render_min:.3f}-{render_max:.3f}ms), {render_fps:.1f} FPS")
+        
+        # Overall frame statistics
+        if self.frame_times:
+            frame_avg = np.mean(self.frame_times)
+            frame_min = np.min(self.frame_times)
+            frame_max = np.max(self.frame_times)
+            frame_fps = 1000.0 / frame_avg if frame_avg > 0 else 0
+            stats.append(f"Frame: {frame_avg:.3f}ms avg ({frame_min:.3f}-{frame_max:.3f}ms), {frame_fps:.1f} FPS")
+        
+        if stats:
+            self.logger.info(f"[Performance] {' | '.join(stats)}")
 
     def run(self):
         """
@@ -2282,11 +2337,13 @@ class SpotSimulation:
             with self.controller._state_lock:
                 self.controller._key_state['quit'] = True
         
-        # Close CSV file
-        if self.csv_file:
+        # Close CSV file (only if CSV logging was enabled)
+        if self.enable_csv_logging and self.csv_file:
             self.csv_file.flush()
             self.csv_file.close()
             self.logger.info(f"CSV file closed with {self.frame_counter} frames saved")
+        elif not self.enable_csv_logging:
+            self.logger.info("CSV logging was disabled - no file to close")
         
         # Cleanup camera render products and annotators
         if hasattr(self, 'rgb_annotators') and hasattr(self, 'render_products'):
@@ -2352,6 +2409,16 @@ def main():
         default="INFO",
         help="Logging level: DEBUG, INFO, WARNING, ERROR, or CRITICAL (default: INFO)"
     )
+    parser.add_argument(
+        "--no-csv-logging",
+        action="store_true",
+        help="Disable CSV logging (improves performance)"
+    )
+    parser.add_argument(
+        "--no-image-saving",
+        action="store_true",
+        help="Disable camera image saving (improves performance)"
+    )
     
     args = parser.parse_args()
     
@@ -2377,6 +2444,10 @@ def main():
     if args.object_type:
         print(f"Object type: {args.object_type}")
     print(f"Log level: {args.loglevel}")
+    if args.no_csv_logging:
+        print("CSV logging: DISABLED (performance mode)")
+    if args.no_image_saving:
+        print("Image saving: DISABLED (performance mode)")
     print("=" * 60)
     experiment_name = input("Enter experiment name (press Enter for 'NULL'): ").strip()
     if not experiment_name:
@@ -2387,7 +2458,13 @@ def main():
     # Create simulation instance with experiment name and config overrides
     # Can pass config_file="config.json" to load from file
     # Can pass keyword arguments to override config values
-    sim = SpotSimulation(experiment_name=experiment_name, log_level=log_level, **config_overrides)
+    sim = SpotSimulation(
+        experiment_name=experiment_name, 
+        log_level=log_level,
+        enable_csv_logging=not args.no_csv_logging,
+        enable_image_saving=not args.no_image_saving,
+        **config_overrides
+    )
     # sim = SpotSimulation(config_file="example_config.json", experiment_name=experiment_name, log_level=log_level)
     # sim = SpotSimulation(randomize=True, map_size=12.0, experiment_name=experiment_name, log_level=log_level)
     

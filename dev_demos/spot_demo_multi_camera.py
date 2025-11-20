@@ -603,7 +603,7 @@ def main():
     """Main entry point for the demo"""
     # Number of cameras (can be changed)
     # Examples: 2 cameras = 180deg apart, 6 cameras = 60deg apart
-    num_cameras = 6
+    num_cameras = 4
     
     # Performance options:
     # enable_render_products: Set to False to test camera overhead without rendering
