@@ -88,7 +88,7 @@ DEFAULT_CONFIG = {
     "box_line_distance_max": 3.0,  # Maximum distance from start-goal line (meters) 
     "box_scale_range": [[0.8, 2.0], [0.8, 2.0], [0.5, 1.0]],
     "box_mass_range": [3.0, 10.0],
-    "num_boxes": 2,  # Number of boxes to spawn
+    "num_boxes": 8,  # Number of boxes to spawn
     "box_color_range": [[0.0, 1.0], [0.0, 1.0], [0.0, 1.0]],  # RGB color ranges [r_min, r_max], [g_min, g_max], [b_min, b_max]
     "box_min_separation": 1.5,  # Minimum separation distance between boxes (meters)
     
@@ -1928,23 +1928,28 @@ class SpotSimulation:
         # 5. Create dynamic objects (can be pushed by robot) - only if object_type is not "none"
         object_type = cfg.get("object_type", "none")
         if object_type != "none":
-            # Check if we have multiple boxes configuration from randomization
-            boxes_config = cfg.get("boxes_config", None)
+            # Get num_boxes from config (this is the source of truth)
             num_boxes = cfg.get("num_boxes", 1)
             
-            if boxes_config is not None and len(boxes_config) > 0:
-                # Spawn multiple boxes from randomization
+            # Check if we have boxes_config from randomization (randomize=True case)
+            boxes_config = cfg.get("boxes_config", None)
+            is_randomized = cfg.get("randomize", False)
+            
+            # Only use boxes_config if it exists, has the correct number of boxes, and randomization was enabled
+            if boxes_config is not None and len(boxes_config) > 0 and is_randomized and len(boxes_config) == num_boxes:
+                # Spawn multiple boxes from randomization (randomize=True case)
+                # boxes_config was created in _apply_randomization() based on num_boxes
                 for box_idx, box_cfg in enumerate(boxes_config):
                     box_pos = np.array(box_cfg["position"])
                     box_scale = np.array(box_cfg["scale"])
                     box_color = np.array(box_cfg["color"])
                     box_mass = box_cfg["mass"]
                     self._create_object(cfg, box_pos, box_scale, box_color, box_idx=box_idx, mass=box_mass)
-            elif num_boxes > 1 and not cfg.get("randomize", False):
-                # Multiple boxes but randomization disabled - create boxes at fixed offsets
+            elif num_boxes > 1:
+                # Multiple boxes requested - create boxes in a grid pattern
+                # This handles both randomize=True (if boxes_config doesn't match) and randomize=False cases
                 base_pos = box_pos
                 base_scale = box_scale
-                base_color = box_color
                 base_mass = cfg.get("box_mass", 5.0)
                 min_separation = cfg.get("box_min_separation", 1.5)
                 
@@ -1972,7 +1977,7 @@ class SpotSimulation:
                     box_color = np.array(box_colors[box_idx])
                     self._create_object(cfg, box_pos_offset, base_scale, box_color, box_idx=box_idx, mass=base_mass)
             else:
-                # Backward compatibility: spawn single box with random color
+                # Single box (num_boxes == 1) - backward compatibility
                 rng = self._get_rng()
                 box_colors = self._generate_random_box_colors(rng, 1)
                 box_color = np.array(box_colors[0])
