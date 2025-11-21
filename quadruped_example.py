@@ -78,7 +78,7 @@ DEFAULT_CONFIG = {
     "box_scale": [1.0, 1.0, 0.5],
     "box_mass": 5.0,
     "box_color": [0.6, 0.4, 0.2],
-    "robot_height": 0.65,
+    "robot_height": 0.8,
     
     # Randomization settings
     "randomize": True,  # Enable randomization by default
@@ -105,8 +105,9 @@ DEFAULT_CONFIG = {
     "update_dt": 0.02,
     
     # Camera settings (RealSense D455 RGB specs)
-    "ego_camera_resolution": [1280, 800],  # Ego-view camera resolution [width, height] - 16:10
-    "top_camera_resolution": [1600, 1600],  # Top-down camera resolution [width, height]
+    "ego_camera_resolution": [640, 480],  # Ego-view camera resolution [width, height] - 16:10
+    "top_camera_resolution": [800, 800],  # Top-down camera resolution [width, height]
+    "top_camera_height": 10.0,  # Top camera z position (height above origin in meters)
 }
 
 
@@ -148,8 +149,8 @@ class PygameDualCameraDisplay:
         self.camera_width = window_size[0] // 2
         self.camera_height = window_size[1]
         
-        # Calculate ego camera display size that maintains aspect ratio
-        self._update_ego_display_size()
+        # Note: We no longer need _update_ego_display_size() since we scale to fill
+        # Both cameras will fill their allocated space (camera_width x camera_height)
         
     def start(self):
         """Start display thread"""
@@ -168,45 +169,45 @@ class PygameDualCameraDisplay:
             pygame.quit()
         print("Pygame display stopped")
     
-    def _update_ego_display_size(self):
-        """Calculate ego camera display size that maintains aspect ratio within available space"""
-        ego_aspect = self.ego_camera_resolution[1] / self.ego_camera_resolution[0]  # height / width
-        available_width = self.camera_width
-        available_height = self.camera_height
-        
-        # Calculate size that fits within available space while maintaining aspect ratio
-        display_width = min(available_width, int(available_height / ego_aspect))
-        display_height = min(available_height, int(available_width * ego_aspect))
-        
-        self.ego_display_size = (display_width, display_height)
-        # Calculate offset to center the image
-        self.ego_display_offset_x = (available_width - display_width) // 2
-        self.ego_display_offset_y = (available_height - display_height) // 2
-    
     def update_ego_frame(self, image_array):
         """
         Update ego camera frame (non-blocking, drops old frames if queue full).
-        Maintains aspect ratio by resizing to fit within available space.
+        Scales to fill available space while maintaining aspect ratio.
         
         Args:
             image_array: numpy array (H, W, 3) in RGB format
         """
         if not self.running:
             return
-        self._update_frame_queue(self.ego_frame_queue, image_array, self.ego_display_size, maintain_aspect=True)
+        # Scale to fill the entire camera area (half window width, full height)
+        self._update_frame_queue(
+            self.ego_frame_queue, 
+            image_array, 
+            (self.camera_width, self.camera_height),
+            maintain_aspect=True,
+            scale_to_fill=True
+        )
     
     def update_top_frame(self, image_array):
         """
-        Update top camera frame (non-blocking, drops old frames if queue full)
+        Update top camera frame (non-blocking, drops old frames if queue full).
+        Scales to fill available space while maintaining aspect ratio.
         
         Args:
             image_array: numpy array (H, W, 3) in RGB format
         """
         if not self.running:
             return
-        self._update_frame_queue(self.top_frame_queue, image_array, (self.camera_width, self.camera_height))
+        # Scale to fill the entire camera area (half window width, full height)
+        self._update_frame_queue(
+            self.top_frame_queue, 
+            image_array, 
+            (self.camera_width, self.camera_height),
+            maintain_aspect=True,
+            scale_to_fill=True
+        )
     
-    def _update_frame_queue(self, frame_queue, image_array, target_size, maintain_aspect=False):
+    def _update_frame_queue(self, frame_queue, image_array, target_size, maintain_aspect=False, scale_to_fill=True):
         """
         Helper method to update a frame queue
         
@@ -215,6 +216,7 @@ class PygameDualCameraDisplay:
             image_array: numpy array (H, W, 3) in RGB format
             target_size: Target size (width, height) for the surface
             maintain_aspect: If True, resize maintaining aspect ratio (fits within target_size)
+            scale_to_fill: If True, scale image to fill target_size (may crop if maintain_aspect=True)
         """
         try:
             # Ensure image is in correct format: (H, W, 3) RGB uint8
@@ -229,8 +231,28 @@ class PygameDualCameraDisplay:
             
             # Resize if needed
             if surface.get_size() != target_size:
-                if maintain_aspect:
-                    # Resize maintaining aspect ratio (smooth scaling)
+                if maintain_aspect and scale_to_fill:
+                    # Scale to fill target_size while maintaining aspect ratio (may crop)
+                    # Calculate scale factors
+                    img_w, img_h = surface.get_size()
+                    target_w, target_h = target_size
+                    
+                    scale_w = target_w / img_w
+                    scale_h = target_h / img_h
+                    scale = max(scale_w, scale_h)  # Use larger scale to fill
+                    
+                    # Scale image
+                    scaled_w = int(img_w * scale)
+                    scaled_h = int(img_h * scale)
+                    surface = pygame.transform.smoothscale(surface, (scaled_w, scaled_h))
+                    
+                    # Crop to target size (center crop)
+                    if scaled_w != target_w or scaled_h != target_h:
+                        crop_x = (scaled_w - target_w) // 2
+                        crop_y = (scaled_h - target_h) // 2
+                        surface = surface.subsurface((crop_x, crop_y, target_w, target_h))
+                elif maintain_aspect:
+                    # Resize maintaining aspect ratio (fits within target_size, may have black bars)
                     surface = pygame.transform.smoothscale(surface, target_size)
                 else:
                     # Resize to exact target size (may distort)
@@ -286,9 +308,9 @@ class PygameDualCameraDisplay:
                         break
                     elif event.type == pygame.VIDEORESIZE:
                         self.window_size = event.size
+                        # Recalculate camera display sizes
                         self.camera_width = self.window_size[0] // 2
                         self.camera_height = self.window_size[1]
-                        self._update_ego_display_size()  # Recalculate ego display size
                         flags = pygame.RESIZABLE | pygame.DOUBLEBUF | pygame.HWSURFACE
                         self.screen = pygame.display.set_mode(self.window_size, flags)
                         back_buffer = pygame.Surface(self.window_size)
@@ -363,17 +385,17 @@ class PygameDualCameraDisplay:
                 # Draw to back buffer first (double buffering)
                 back_buffer.fill((0, 0, 0))  # Black background
                 
-                # Display ego camera (left side) - centered to maintain aspect ratio
+                # Display ego camera (left side) - scaled to fill the area
                 if ego_surface:
-                    back_buffer.blit(ego_surface, (self.ego_display_offset_x, self.ego_display_offset_y))
+                    # Surface is already scaled to fill (self.camera_width, self.camera_height)
+                    back_buffer.blit(ego_surface, (0, 0))
                 else:
                     # Placeholder if no frame
-                    pygame.draw.rect(back_buffer, (50, 50, 50), 
-                                   (self.ego_display_offset_x, self.ego_display_offset_y, 
-                                    self.ego_display_size[0], self.ego_display_size[1]))
+                    pygame.draw.rect(back_buffer, (50, 50, 50), (0, 0, self.camera_width, self.camera_height))
                 
-                # Display top camera (right side)
+                # Display top camera (right side) - scaled to fill the area
                 if top_surface:
+                    # Surface is already scaled to fill (self.camera_width, self.camera_height)
                     back_buffer.blit(top_surface, (self.camera_width, 0))
                 else:
                     # Placeholder if no frame
@@ -1085,7 +1107,18 @@ class SpotSimulation:
         
         rgb = colorsys.hls_to_rgb(h_norm, l_norm, s_norm)
         
-        return [float(rgb[0]), float(rgb[1]), float(rgb[2])]
+        # Ensure RGB values are in valid range [0, 1]
+        rgb_clamped = [
+            max(0.0, min(1.0, float(rgb[0]))),
+            max(0.0, min(1.0, float(rgb[1]))),
+            max(0.0, min(1.0, float(rgb[2])))
+        ]
+        
+        # Verify the color is valid (sanity check)
+        if not all(0.0 <= c <= 1.0 for c in rgb_clamped):
+            self.logger.warning(f"Generated invalid RGB color: {rgb_clamped}, clamping to valid range")
+        
+        return rgb_clamped
 
     def _check_box_collision(self, new_pos_2d, new_scale, existing_boxes, min_separation):
         """
@@ -1264,12 +1297,13 @@ class SpotSimulation:
                     
                     # Generate random HSL color (hue random, saturation=100%, lightness=50%)
                     # Excludes colors near Red, Green, Blue and ensures uniqueness
+                    # Use larger exclusion range (50°) to ensure colors are clearly different from primaries
                     box_color = self._generate_random_hsl_color(
                         rng, 
                         exclude_primary=True, 
-                        exclusion_range=30.0,
+                        exclusion_range=50.0,  # Increased from 30° to 50° for better separation
                         existing_colors=used_colors,
-                        min_hue_separation=15.0
+                        min_hue_separation=20.0  # Increased from 15° to 20° for better distinction
                     )
                     used_colors.append(box_color)  # Track this color
                     
@@ -1400,9 +1434,24 @@ class SpotSimulation:
             prim_path: USD prim path for the box
             position: Box position [x, y, z]
             scale: Box scale [x, y, z]
-            color: Box color [r, g, b]
+            color: Box color [r, g, b] (list or numpy array)
             mass: Box mass (kg)
         """
+        # Ensure color is a numpy array with values in [0, 1] range
+        if not isinstance(color, np.ndarray):
+            color = np.array(color, dtype=np.float32)
+        else:
+            color = color.astype(np.float32)
+        
+        # Validate color values are in valid range
+        color = np.clip(color, 0.0, 1.0)
+        
+        # Ensure position and scale are numpy arrays
+        if not isinstance(position, np.ndarray):
+            position = np.array(position, dtype=np.float32)
+        if not isinstance(scale, np.ndarray):
+            scale = np.array(scale, dtype=np.float32)
+        
         # Create dynamic box
         self.world.scene.add(DynamicCuboid(
             prim_path=prim_path, name=f"obstacle_box_{prim_path.split('/')[-1]}",
@@ -1448,16 +1497,45 @@ class SpotSimulation:
             prim_path: USD prim path for the sphere
             position: Sphere position [x, y, z]
             scale: Sphere scale [x, y, z] (radius will be average of x, y, z)
-            color: Sphere color [r, g, b]
+            color: Sphere color [r, g, b] (list or numpy array)
             mass: Sphere mass (kg)
         """
+        # Ensure color is a numpy array with values in [0, 1] range
+        if not isinstance(color, np.ndarray):
+            color = np.array(color, dtype=np.float32)
+        else:
+            color = color.astype(np.float32)
+        
+        # Validate color values are in valid range
+        color = np.clip(color, 0.0, 1.0)
+        
+        # Ensure position and scale are numpy arrays
+        if not isinstance(position, np.ndarray):
+            position = np.array(position, dtype=np.float32)
+        if not isinstance(scale, np.ndarray):
+            scale = np.array(scale, dtype=np.float32)
+        # Ensure color is a numpy array with values in [0, 1] range
+        if not isinstance(color, np.ndarray):
+            color = np.array(color, dtype=np.float32)
+        else:
+            color = color.astype(np.float32)
+        
+        # Validate color values are in valid range
+        color = np.clip(color, 0.0, 1.0)
+        
+        # Ensure position and scale are numpy arrays
+        if not isinstance(position, np.ndarray):
+            position = np.array(position, dtype=np.float32)
+        if not isinstance(scale, np.ndarray):
+            scale = np.array(scale, dtype=np.float32)
+        
         # For sphere, use average of scale dimensions as radius
         radius = np.mean(scale) if len(scale) >= 3 else scale[0] if len(scale) > 0 else 0.5
         
         # Create dynamic sphere using USD prim (Isaac Sim doesn't have DynamicSphere directly)
         sphere = UsdGeom.Sphere.Define(self.stage, prim_path)
         sphere.GetRadiusAttr().Set(radius)
-        sphere.CreateDisplayColorAttr().Set([Gf.Vec3f(color[0], color[1], color[2])])
+        sphere.CreateDisplayColorAttr().Set([Gf.Vec3f(float(color[0]), float(color[1]), float(color[2]))])
         
         # Set position
         sphere_xform = UsdGeom.Xformable(sphere)
@@ -2054,12 +2132,13 @@ class SpotSimulation:
                     
                     # Generate random HSL color for each box (hue random, saturation=100%, lightness=50%)
                     # Excludes colors near Red, Green, Blue and ensures uniqueness
+                    # Use larger exclusion range (50°) to ensure colors are clearly different from primaries
                     box_color_offset = self._generate_random_hsl_color(
                         rng, 
                         exclude_primary=True, 
-                        exclusion_range=30.0,
+                        exclusion_range=50.0,  # Increased from 30° to 50° for better separation
                         existing_colors=used_colors,
-                        min_hue_separation=15.0
+                        min_hue_separation=20.0  # Increased from 15° to 20° for better distinction
                     )
                     used_colors.append(box_color_offset)  # Track this color
                     
@@ -2068,8 +2147,13 @@ class SpotSimulation:
                 # Backward compatibility: spawn single box with random HSL color
                 # Generate random HSL color (hue random, saturation=100%, lightness=50%)
                 # Excludes colors near Red, Green, Blue
+                # Use larger exclusion range (50°) to ensure colors are clearly different from primaries
                 rng = self._get_rng()
-                random_box_color = self._generate_random_hsl_color(rng, exclude_primary=True, exclusion_range=30.0)
+                random_box_color = self._generate_random_hsl_color(
+                    rng, 
+                    exclude_primary=True, 
+                    exclusion_range=50.0  # Increased from 30° to 50° for better separation
+                )
                 self._create_object(cfg, box_pos, box_scale, random_box_color, box_idx=0)
         else:
             self.logger.info("Object spawning disabled (object_type='none')")
@@ -2091,8 +2175,9 @@ class SpotSimulation:
         goal_xform.AddTranslateOp().Set(Gf.Vec3d(float(goal_pos[0]), float(goal_pos[1]), 0.0))
         
         # 9. Create top-down camera using generic camera creation function
-        # Position: 12m above origin, looking down
+        # Position: configurable height above origin, looking down
         top_res = self.config["top_camera_resolution"]
+        top_camera_height = self.config.get("top_camera_height", 20.0)  # Default 20m if not specified
         
         # Calculate quaternion for -90° rotation around Z axis
         rotation_z = -np.pi / 2.0
@@ -2107,7 +2192,7 @@ class SpotSimulation:
         camera_path = self._create_camera(
             parent_path="/World",
             camera_name="TopCamera",
-            translation=(0.0, 0.0, 20.0),  # 12m above origin
+            translation=(0.0, 0.0, top_camera_height),  # Height from config
             rotation_quat=rotation_quat,  # -90° around Z axis
             focal_length=18.0,  # mm (for overhead view)
             horizontal_aperture=18.0,  # mm (square aspect ratio)
@@ -2169,11 +2254,12 @@ class SpotSimulation:
         ])
         
         # Add Spot robot to scene at offset spawn position with calculated orientation
-        # Robot z position is 0.0 (on the ground) - the robot model has its own base height
+        # Robot z position uses robot_height from config (default 0.65m above ground)
+        robot_height = self.config.get("robot_height", 0.65)
         self.spot = SpotFlatTerrainPolicy(
             prim_path="/World/Spot",
             name="Spot",
-            position=np.array([spawn_pos[0], spawn_pos[1], 0.0]),
+            position=np.array([spawn_pos[0], spawn_pos[1], robot_height]),
             orientation=orientation,
         )
         
