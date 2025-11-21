@@ -32,14 +32,19 @@ from PIL import Image
 def get_latest_experiment_folder():
     """
     Find the latest experiment folder based on timestamp in directory name.
+    Searches in expr_data/ directory.
     
     Returns:
         Path object of latest experiment folder, or None if not found
     """
-    current_dir = Path('.')
+    expr_data_dir = Path('expr_data')
+    
+    if not expr_data_dir.exists():
+        return None
+    
     experiment_dirs = []
     
-    for item in current_dir.iterdir():
+    for item in expr_data_dir.iterdir():
         if item.is_dir():
             name = item.name
             if len(name) >= 15 and name[6] == '_' and name[13] == '-':
@@ -577,16 +582,12 @@ def main():
         experiment_dir = sys.argv[1]
         print(f"Using specified directory: {experiment_dir}")
     else:
-        user_input = input("\nEnter experiment directory (or press Enter for latest): ").strip()
-        
-        if user_input:
-            experiment_dir = user_input
-        else:
-            experiment_dir = get_latest_experiment_folder()
-            if experiment_dir is None:
-                print("Error: No experiment folders found in current directory")
-                sys.exit(1)
-            print(f"Using latest experiment: {experiment_dir}")
+        # Automatically use latest experiment from expr_data/
+        experiment_dir = get_latest_experiment_folder()
+        if experiment_dir is None:
+            print("Error: No experiment folders found in expr_data/ directory")
+            sys.exit(1)
+        print(f"Using latest experiment: {experiment_dir}")
     
     if not Path(experiment_dir).exists():
         print(f"Error: Directory '{experiment_dir}' not found")

@@ -39,7 +39,6 @@ from isaacsim.core.api.materials import PreviewSurface
 import omni.kit.commands
 from isaacsim.robot.policy.examples.robots import SpotFlatTerrainPolicy
 from keyboard_controller import KeyboardController
-import colorsys
 
 
 # ===================== Default Configuration =====================
@@ -509,6 +508,9 @@ class SpotSimulation:
         # Performance flags (can be set via command-line args)
         self.enable_csv_logging = enable_csv_logging   # Enable/disable CSV logging
         self.enable_image_saving = enable_image_saving  # Enable/disable image saving
+        
+        # Random number generator (will be initialized during randomization)
+        self._rng = None  # Store RNG instance to ensure proper randomness sequence
 
     def _setup_logging(self, log_level=logging.INFO):
         """
@@ -917,170 +919,6 @@ class SpotSimulation:
         
         return np.array([roll, pitch, yaw])
 
-    def _colors_are_similar(self, color1, color2, hue_threshold=15.0):
-        """
-        Check if two colors are too similar based on their HSL hue values.
-        
-        Args:
-            color1: RGB color [r, g, b] (0-1 range)
-            color2: RGB color [r, g, b] (0-1 range)
-            hue_threshold: Minimum hue difference in degrees to consider colors different (default: 15°)
-        
-        Returns:
-            bool: True if colors are too similar, False otherwise
-        """
-        # Convert RGB to HSL to compare hues
-        h1, s1, l1 = colorsys.rgb_to_hls(color1[0], color1[1], color1[2])
-        h2, s2, l2 = colorsys.rgb_to_hls(color2[0], color2[1], color2[2])
-        
-        # Convert hue to degrees (0-360)
-        h1_deg = (h1 * 360) % 360
-        h2_deg = (h2 * 360) % 360
-        
-        # Calculate hue difference (accounting for wrap-around)
-        hue_diff = abs(h1_deg - h2_deg)
-        if hue_diff > 180:
-            hue_diff = 360 - hue_diff
-        
-        # Colors are similar if hue difference is less than threshold
-        return hue_diff < hue_threshold
-    
-    def _generate_random_hsl_color(self, rng, exclude_primary=True, exclusion_range=30.0, existing_colors=None, min_hue_separation=15.0):
-        """
-        Generate a random color in HSL space with random hue, saturation=100%, lightness=50%.
-        Optionally excludes colors near Red (0°), Green (120°), and Blue (240°).
-        Ensures the generated color is different from existing colors.
-        
-        Args:
-            rng: Random number generator (numpy RandomState or Generator)
-            exclude_primary: If True, exclude colors near Red, Green, Blue
-            exclusion_range: Degrees to exclude around each primary color (default: 30°)
-            existing_colors: List of existing RGB colors to avoid similarity with
-            min_hue_separation: Minimum hue difference in degrees from existing colors (default: 15°)
-        
-        Returns:
-            RGB tuple (0-1 range) as list [r, g, b]
-        """
-        
-        if exclude_primary:
-            # Define excluded hue ranges (in degrees)
-            # Red: 0° (and 360°), Green: 120°, Blue: 240°
-            # Red wraps around: exclude (360-exclusion_range) to exclusion_range
-            red_start = 360 - exclusion_range
-            red_end = exclusion_range
-            green_start = 120 - exclusion_range
-            green_end = 120 + exclusion_range
-            blue_start = 240 - exclusion_range
-            blue_end = 240 + exclusion_range
-            
-            max_attempts = 500  # Increased attempts to find unique color
-            hue = None
-            
-            for attempt in range(max_attempts):
-                candidate_hue = rng.uniform(0, 360)
-                
-                # Check if hue is in any excluded range
-                is_excluded = False
-                
-                # Check Red (wraps around 0/360)
-                if candidate_hue >= red_start or candidate_hue <= red_end:
-                    is_excluded = True
-                # Check Green
-                elif green_start <= candidate_hue <= green_end:
-                    is_excluded = True
-                # Check Blue
-                elif blue_start <= candidate_hue <= blue_end:
-                    is_excluded = True
-                
-                if is_excluded:
-                    continue
-                
-                # Check if hue is too similar to existing colors
-                if existing_colors is not None and len(existing_colors) > 0:
-                    # Convert candidate hue to RGB to check similarity
-                    h_norm = (candidate_hue % 360) / 360.0
-                    s_norm = 1.0  # 100% saturation
-                    l_norm = 0.5  # 50% lightness
-                    candidate_rgb = colorsys.hls_to_rgb(h_norm, l_norm, s_norm)
-                    candidate_color = [float(candidate_rgb[0]), float(candidate_rgb[1]), float(candidate_rgb[2])]
-                    
-                    # Check similarity with all existing colors
-                    too_similar = False
-                    for existing_color in existing_colors:
-                        if self._colors_are_similar(candidate_color, existing_color, min_hue_separation):
-                            too_similar = True
-                            break
-                    
-                    if too_similar:
-                        continue
-                
-                # Valid hue found
-                hue = candidate_hue
-                break
-            
-            # Fallback: if we couldn't find a non-excluded hue, use a random one
-            if hue is None:
-                hue = rng.uniform(0, 360)
-                self.logger.warning("Could not find unique non-excluded hue, using random hue")
-        else:
-            # No primary exclusion, but still check for uniqueness
-            max_attempts = 500
-            hue = None
-            
-            for attempt in range(max_attempts):
-                candidate_hue = rng.uniform(0, 360)
-                
-                # Check if hue is too similar to existing colors
-                if existing_colors is not None and len(existing_colors) > 0:
-                    # Convert candidate hue to RGB to check similarity
-                    h_norm = (candidate_hue % 360) / 360.0
-                    s_norm = 1.0  # 100% saturation
-                    l_norm = 0.5  # 50% lightness
-                    candidate_rgb = colorsys.hls_to_rgb(h_norm, l_norm, s_norm)
-                    candidate_color = [float(candidate_rgb[0]), float(candidate_rgb[1]), float(candidate_rgb[2])]
-                    
-                    # Check similarity with all existing colors
-                    too_similar = False
-                    for existing_color in existing_colors:
-                        if self._colors_are_similar(candidate_color, existing_color, min_hue_separation):
-                            too_similar = True
-                            break
-                    
-                    if too_similar:
-                        continue
-                
-                # Valid hue found
-                hue = candidate_hue
-                break
-            
-            if hue is None:
-                hue = rng.uniform(0, 360)
-                self.logger.warning("Could not find unique hue, using random hue")
-        
-        # Fixed: 100% saturation, 50% lightness
-        saturation = 100.0
-        lightness = 50.0
-        
-        # Convert HSL to RGB
-        # colorsys uses HLS (hue, lightness, saturation) - same as HSL but different order
-        h_norm = (hue % 360) / 360.0
-        s_norm = saturation / 100.0
-        l_norm = lightness / 100.0
-        
-        rgb = colorsys.hls_to_rgb(h_norm, l_norm, s_norm)
-        
-        # Ensure RGB values are in valid range [0, 1]
-        rgb_clamped = [
-            max(0.0, min(1.0, float(rgb[0]))),
-            max(0.0, min(1.0, float(rgb[1]))),
-            max(0.0, min(1.0, float(rgb[2])))
-        ]
-        
-        # Verify the color is valid (sanity check)
-        if not all(0.0 <= c <= 1.0 for c in rgb_clamped):
-            self.logger.warning(f"Generated invalid RGB color: {rgb_clamped}, clamping to valid range")
-        
-        return rgb_clamped
 
     def _check_box_collision(self, new_pos_2d, new_scale, existing_boxes, min_separation):
         """
@@ -1136,8 +974,10 @@ class SpotSimulation:
         else:
             self.logger.info(f"Using fixed seed: {random_seed}")
         
-        # Create seeded random number generator
-        rng = np.random.RandomState(random_seed)
+        # Create seeded random number generator and store it as instance variable
+        # This ensures the same RNG instance is reused, maintaining proper randomness sequence
+        self._rng = np.random.RandomState(random_seed)
+        rng = self._rng
         
         # Store the seed that was used for reference
         self.config["_used_seed"] = random_seed
@@ -1217,7 +1057,9 @@ class SpotSimulation:
                 # Store multiple boxes configuration
                 boxes_config = []
                 existing_boxes = []  # For collision checking
-                used_colors = []  # Track used colors to ensure uniqueness
+                
+                # Use default box color from config for all boxes
+                box_color = np.array(cfg.get("box_color", [0.6, 0.4, 0.2]))
                 
                 for box_idx in range(num_boxes):
                     max_box_attempts = 500
@@ -1257,18 +1099,6 @@ class SpotSimulation:
                         self.logger.warning(f"Failed to find valid position for box {box_idx + 1} after {max_box_attempts} attempts, skipping")
                         continue
                     
-                    # Generate random HSL color (hue random, saturation=100%, lightness=50%)
-                    # Excludes colors near Red, Green, Blue and ensures uniqueness
-                    # Use larger exclusion range (50°) to ensure colors are clearly different from primaries
-                    box_color = self._generate_random_hsl_color(
-                        rng, 
-                        exclude_primary=True, 
-                        exclusion_range=50.0,  # Increased from 30° to 50° for better separation
-                        existing_colors=used_colors,
-                        min_hue_separation=20.0  # Increased from 15° to 20° for better distinction
-                    )
-                    used_colors.append(box_color)  # Track this color
-                    
                     # Randomize box mass within specified range
                     box_mass = rng.uniform(*cfg["box_mass_range"])
                     
@@ -1280,7 +1110,7 @@ class SpotSimulation:
                             cfg["box_position"][2]  # Keep original z coordinate
                         ],
                         "scale": box_scale,
-                        "color": box_color,
+                        "color": box_color.tolist(),  # Use default color from config
                         "mass": box_mass
                     }
                     boxes_config.append(box_config)
@@ -1716,20 +1546,25 @@ class SpotSimulation:
     def _get_rng(self):
         """
         Get the random number generator for this simulation.
-        Uses the seed from config if available, otherwise creates a new one.
+        Reuses the same RNG instance to maintain proper randomness sequence.
+        If RNG doesn't exist yet, creates one with the seed from config.
         
         Returns:
-            numpy RandomState instance
+            numpy RandomState instance (reused, not recreated)
         """
-        cfg = self.config
-        random_seed = cfg.get("_used_seed", None)
-        if random_seed is None:
-            # If no seed was used yet, get or generate one
-            random_seed = cfg.get("random_seed", None)
+        if self._rng is None:
+            # RNG not initialized yet, create it
+            cfg = self.config
+            random_seed = cfg.get("_used_seed", None)
             if random_seed is None:
-                random_seed = np.random.randint(0, 2**31 - 1)
-            cfg["_used_seed"] = random_seed
-        return np.random.RandomState(random_seed)
+                # If no seed was used yet, get or generate one
+                random_seed = cfg.get("random_seed", None)
+                if random_seed is None:
+                    random_seed = np.random.randint(0, 2**31 - 1)
+                cfg["_used_seed"] = random_seed
+            # Create and store RNG instance
+            self._rng = np.random.RandomState(random_seed)
+        return self._rng
     
     def _create_gate_object(self, cfg):
         """
@@ -2076,9 +1911,8 @@ class SpotSimulation:
                 boxes_per_row = int(np.ceil(np.sqrt(num_boxes)))
                 spacing = max(base_scale[0], base_scale[1]) + min_separation
                 
-                boxes_config = []
-                used_colors = []  # Track used colors to ensure uniqueness
-                rng = self._get_rng()
+                # Use default box color from config for all boxes
+                box_color = np.array(cfg.get("box_color", [0.6, 0.4, 0.2]))
                 
                 for box_idx in range(num_boxes):
                     row = box_idx // boxes_per_row
@@ -2092,31 +1926,11 @@ class SpotSimulation:
                         base_pos[2]
                     ])
                     
-                    # Generate random HSL color for each box (hue random, saturation=100%, lightness=50%)
-                    # Excludes colors near Red, Green, Blue and ensures uniqueness
-                    # Use larger exclusion range (50°) to ensure colors are clearly different from primaries
-                    box_color_offset = self._generate_random_hsl_color(
-                        rng, 
-                        exclude_primary=True, 
-                        exclusion_range=50.0,  # Increased from 30° to 50° for better separation
-                        existing_colors=used_colors,
-                        min_hue_separation=20.0  # Increased from 15° to 20° for better distinction
-                    )
-                    used_colors.append(box_color_offset)  # Track this color
-                    
-                    self._create_object(cfg, box_pos_offset, base_scale, box_color_offset, box_idx=box_idx, mass=base_mass)
+                    self._create_object(cfg, box_pos_offset, base_scale, box_color, box_idx=box_idx, mass=base_mass)
             else:
-                # Backward compatibility: spawn single box with random HSL color
-                # Generate random HSL color (hue random, saturation=100%, lightness=50%)
-                # Excludes colors near Red, Green, Blue
-                # Use larger exclusion range (50°) to ensure colors are clearly different from primaries
-                rng = self._get_rng()
-                random_box_color = self._generate_random_hsl_color(
-                    rng, 
-                    exclude_primary=True, 
-                    exclusion_range=50.0  # Increased from 30° to 50° for better separation
-                )
-                self._create_object(cfg, box_pos, box_scale, random_box_color, box_idx=0)
+                # Backward compatibility: spawn single box with default color from config
+                box_color = np.array(cfg.get("box_color", [0.6, 0.4, 0.2]))
+                self._create_object(cfg, box_pos, box_scale, box_color, box_idx=0)
         else:
             self.logger.info("Object spawning disabled (object_type='none')")
         
