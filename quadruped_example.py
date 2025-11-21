@@ -39,6 +39,7 @@ from isaacsim.core.api.materials import PreviewSurface
 import omni.kit.commands
 from isaacsim.robot.policy.examples.robots import SpotFlatTerrainPolicy
 from keyboard_controller import KeyboardController
+import colorsys
 
 
 # ===================== Default Configuration =====================
@@ -57,7 +58,7 @@ DEFAULT_CONFIG = {
     "dome_light_intensity": 600.0,
     "marker_radius": 0.3,
     "goal_hemisphere_diameter": 1.0,  # Diameter of hemisphere at goal point (meters)
-    "object_type": "gate",  # Type of object to spawn: "none", "box", "sphere", "gate"
+    "object_type": "box",  # Type of object to spawn: "none", "box", "sphere", "gate"
     
     # Gate-specific parameters
     "wall_depth_min": 0.3,  # Minimum wall depth (meters)
@@ -81,11 +82,15 @@ DEFAULT_CONFIG = {
     
     # Randomization settings
     "randomize": True,  # Enable randomization by default
+    "random_seed": None,  # Random seed for reproducibility (None = use random seed, int = fixed seed)
     "wall_inset": 1.0,  # Inset from walls for spawning (meters)
     "box_line_distance_min": 2.0,  # Minimum distance from start-goal line (meters)
-    "box_line_distance_max": 3.0,  # Maximum distance from start-goal line (meters)
-    "box_scale_range": [[0.5, 2.0], [0.5, 2.0], [0.3, 1.0]],
+    "box_line_distance_max": 3.0,  # Maximum distance from start-goal line (meters) 
+    "box_scale_range": [[0.8, 2.0], [0.8, 2.0], [0.5, 1.0]],
     "box_mass_range": [3.0, 10.0],
+    "num_boxes": 2,  # Number of boxes to spawn
+    "box_color_range": [[0.0, 1.0], [0.0, 1.0], [0.0, 1.0]],  # RGB color ranges [r_min, r_max], [g_min, g_max], [b_min, b_max]
+    "box_min_separation": 1.5,  # Minimum separation distance between boxes (meters)
     
     # Controller settings
     "max_vx": 2.0,
@@ -579,15 +584,23 @@ class SpotSimulation:
                 self.csv_file = open(csv_path, 'w', newline='')
                 self.csv_writer = csv.writer(self.csv_file)
                 
-                # Write CSV header
-                self.csv_writer.writerow([
+                # Write CSV header - use JSON-encoded lists for box properties
+                # This makes the CSV structure consistent regardless of number of boxes
+                header = [
                     'timestamp', 'frame_num',
                     'robot_pos_x', 'robot_pos_y', 'robot_pos_z',
                     'robot_orient_w', 'robot_orient_x', 'robot_orient_y', 'robot_orient_z',
+                    'box_positions',      # JSON list: [[x0,y0,z0], [x1,y1,z1], ...]
+                    'box_orientations',   # JSON list: [[w0,x0,y0,z0], [w1,x1,y1,z1], ...]
+                    'box_l1_distances',  # JSON list: [dist0, dist1, ...]
+                    'num_boxes',          # Number of boxes in this row
+                    # For backward compatibility, also add single object columns (will be same as box[0] if exists)
                     'object_pos_x', 'object_pos_y', 'object_pos_z',
                     'object_orient_w', 'object_orient_x', 'object_orient_y', 'object_orient_z',
-                    'l1_distance_to_goal'  # L1 norm: robot<->goal (gate) or box<->goal (box)
-                ])
+                    'l1_distance_to_goal'
+                ]
+                
+                self.csv_writer.writerow(header)
                 self.csv_file.flush()
                 
                 self.logger.info(f"CSV file initialized: {csv_path}")
@@ -602,6 +615,7 @@ class SpotSimulation:
         """
         Save current configuration to config.json.
         Saves the actual values used in the experiment (no random ranges).
+        Ensures boxes_config is saved as a list format for compatibility.
         """
         if self.experiment_dir is None:
             return
@@ -615,10 +629,27 @@ class SpotSimulation:
             keys_to_remove = [
                 'box_scale_range', 'box_mass_range',
                 'box_line_distance_min', 'box_line_distance_max',
-                'wall_inset'
+                'wall_inset', 'box_color_range'  # Remove color range, keep actual colors
             ]
             for key in keys_to_remove:
                 clean_config.pop(key, None)
+            
+            # Ensure boxes_config is in list format (even for single box)
+            if 'boxes_config' not in clean_config or not isinstance(clean_config.get('boxes_config'), list):
+                # Create boxes_config from single box parameters if it doesn't exist
+                if clean_config.get('object_type') in ['box', 'sphere']:
+                    boxes_config = [{
+                        'position': clean_config.get('box_position', [0.0, 0.0, 0.25]),
+                        'scale': clean_config.get('box_scale', [1.0, 1.0, 0.5]),
+                        'color': clean_config.get('box_color', [0.6, 0.4, 0.2]),
+                        'mass': clean_config.get('box_mass', 5.0)
+                    }]
+                    clean_config['boxes_config'] = boxes_config
+                    clean_config['num_boxes'] = 1
+            
+            # Ensure num_boxes is set
+            if 'num_boxes' not in clean_config:
+                clean_config['num_boxes'] = len(clean_config.get('boxes_config', []))
             
             config_path = self.experiment_dir / "config.json"
             with open(config_path, 'w') as f:
@@ -762,16 +793,18 @@ class SpotSimulation:
         except Exception as e:
             self.logger.debug(f"Fallback image capture also failed: {e}")
     
-    def _save_experiment_data(self, robot_pos, robot_quat, object_pos, object_quat, l1_distance):
+    def _save_experiment_data(self, robot_pos, robot_quat, boxes_data, object_pos=None, object_quat=None, l1_distance=None):
         """
         Save experiment data to CSV and capture camera images.
         
         Args:
             robot_pos: Robot position [x, y, z]
             robot_quat: Robot orientation quaternion [w, x, y, z]
-            object_pos: Object position [x, y, z]
-            object_quat: Object orientation quaternion [w, x, y, z]
-            l1_distance: L1 distance to goal (robot<->goal for gate, box<->goal for box)
+            boxes_data: List of box data dicts, each with 'pos', 'quat', 'l1_distance'
+                       Always use list format (even for single box) for compatibility
+            object_pos: Object position [x, y, z] (for backward compatibility, same as boxes_data[0] if available)
+            object_quat: Object orientation quaternion [w, x, y, z] (for backward compatibility)
+            l1_distance: L1 distance to goal (for backward compatibility, same as boxes_data[0]['l1_distance'] if available)
         """
         # Skip if CSV logging is disabled
         if not self.enable_csv_logging or self.csv_writer is None:
@@ -785,16 +818,70 @@ class SpotSimulation:
             elapsed = (datetime.now() - self.experiment_start_time).total_seconds()
             timestamp_str = f"{elapsed:.3f}"
             
+            # Ensure boxes_data is a list (for compatibility)
+            if not isinstance(boxes_data, list):
+                boxes_data = [boxes_data]
+            
             # Write CSV row (only if CSV logging is enabled)
             if self.enable_csv_logging:
-                self.csv_writer.writerow([
+                # Extract box properties into lists
+                box_positions = []
+                box_orientations = []
+                box_l1_distances = []
+                
+                for box_data in boxes_data:
+                    # Position as [x, y, z]
+                    box_positions.append([
+                        float(box_data['pos'][0]),
+                        float(box_data['pos'][1]),
+                        float(box_data['pos'][2])
+                    ])
+                    # Orientation as [w, x, y, z]
+                    box_orientations.append([
+                        float(box_data['quat'][0]),
+                        float(box_data['quat'][1]),
+                        float(box_data['quat'][2]),
+                        float(box_data['quat'][3])
+                    ])
+                    # L1 distance as float
+                    box_l1_distances.append(float(box_data['l1_distance']))
+                
+                # Encode lists as JSON strings for CSV storage
+                box_positions_json = json.dumps(box_positions)
+                box_orientations_json = json.dumps(box_orientations)
+                box_l1_distances_json = json.dumps(box_l1_distances)
+                num_boxes = len(boxes_data)
+                
+                # Get first box data for backward compatibility columns
+                if len(boxes_data) > 0:
+                    first_box = boxes_data[0]
+                    object_pos = first_box['pos']
+                    object_quat = first_box['quat']
+                    l1_distance = first_box['l1_distance']
+                elif object_pos is not None and object_quat is not None and l1_distance is not None:
+                    # Use provided fallback values
+                    pass
+                else:
+                    # Default values
+                    object_pos = np.array([0.0, 0.0, 0.0])
+                    object_quat = np.array([1.0, 0.0, 0.0, 0.0])
+                    l1_distance = 0.0
+                
+                row = [
                     timestamp_str, self.frame_counter,
                     robot_pos[0], robot_pos[1], robot_pos[2],
                     robot_quat[0], robot_quat[1], robot_quat[2], robot_quat[3],
-                    object_pos[0], object_pos[1], object_pos[2],
-                    object_quat[0], object_quat[1], object_quat[2], object_quat[3],
-                    l1_distance
-                ])
+                    box_positions_json,      # JSON-encoded list of positions
+                    box_orientations_json,   # JSON-encoded list of orientations
+                    box_l1_distances_json,  # JSON-encoded list of distances
+                    num_boxes,               # Number of boxes
+                    # Backward compatibility columns (first box or fallback)
+                    float(object_pos[0]), float(object_pos[1]), float(object_pos[2]),
+                    float(object_quat[0]), float(object_quat[1]), float(object_quat[2]), float(object_quat[3]),
+                    float(l1_distance)
+                ]
+                
+                self.csv_writer.writerow(row)
                 
                 # Flush every 10 frames to ensure data is written
                 if self.frame_counter % 10 == 0:
@@ -846,19 +933,134 @@ class SpotSimulation:
         
         return np.array([roll, pitch, yaw])
 
+    def _generate_random_hsl_color(self, rng, exclude_primary=True, exclusion_range=30.0):
+        """
+        Generate a random color in HSL space with random hue, saturation=100%, lightness=50%.
+        Optionally excludes colors near Red (0°), Green (120°), and Blue (240°).
+        
+        Args:
+            rng: Random number generator (numpy RandomState or Generator)
+            exclude_primary: If True, exclude colors near Red, Green, Blue
+            exclusion_range: Degrees to exclude around each primary color (default: 30°)
+        
+        Returns:
+            RGB tuple (0-1 range) as list [r, g, b]
+        """
+        
+        if exclude_primary:
+            # Define excluded hue ranges (in degrees)
+            # Red: 0° (and 360°), Green: 120°, Blue: 240°
+            # Red wraps around: exclude (360-exclusion_range) to exclusion_range
+            red_start = 360 - exclusion_range
+            red_end = exclusion_range
+            green_start = 120 - exclusion_range
+            green_end = 120 + exclusion_range
+            blue_start = 240 - exclusion_range
+            blue_end = 240 + exclusion_range
+            
+            max_attempts = 100
+            hue = None
+            
+            for attempt in range(max_attempts):
+                candidate_hue = rng.uniform(0, 360)
+                
+                # Check if hue is in any excluded range
+                is_excluded = False
+                
+                # Check Red (wraps around 0/360)
+                if candidate_hue >= red_start or candidate_hue <= red_end:
+                    is_excluded = True
+                # Check Green
+                elif green_start <= candidate_hue <= green_end:
+                    is_excluded = True
+                # Check Blue
+                elif blue_start <= candidate_hue <= blue_end:
+                    is_excluded = True
+                
+                if not is_excluded:
+                    hue = candidate_hue
+                    break
+            
+            # Fallback: if we couldn't find a non-excluded hue, use a random one
+            if hue is None:
+                hue = rng.uniform(0, 360)
+                self.logger.warning("Could not find non-excluded hue, using random hue")
+        else:
+            hue = rng.uniform(0, 360)
+        
+        # Fixed: 100% saturation, 50% lightness
+        saturation = 100.0
+        lightness = 50.0
+        
+        # Convert HSL to RGB
+        # colorsys uses HLS (hue, lightness, saturation) - same as HSL but different order
+        h_norm = (hue % 360) / 360.0
+        s_norm = saturation / 100.0
+        l_norm = lightness / 100.0
+        
+        rgb = colorsys.hls_to_rgb(h_norm, l_norm, s_norm)
+        
+        return [float(rgb[0]), float(rgb[1]), float(rgb[2])]
+
+    def _check_box_collision(self, new_pos_2d, new_scale, existing_boxes, min_separation):
+        """
+        Check if a new box position would collide with existing boxes.
+        
+        Args:
+            new_pos_2d: New box position [x, y]
+            new_scale: New box scale [x, y, z]
+            existing_boxes: List of existing boxes, each as dict with 'position' [x, y, z] and 'scale' [x, y, z]
+            min_separation: Minimum separation distance between box centers (meters)
+        
+        Returns:
+            bool: True if collision detected, False otherwise
+        """
+        # Calculate effective radius for new box (using max of x and y scale)
+        new_radius = max(new_scale[0], new_scale[1]) / 2.0
+        
+        for existing_box in existing_boxes:
+            existing_pos_2d = existing_box['position'][:2]
+            existing_scale = existing_box['scale']
+            existing_radius = max(existing_scale[0], existing_scale[1]) / 2.0
+            
+            # Calculate distance between box centers
+            distance = np.linalg.norm(new_pos_2d - existing_pos_2d)
+            
+            # Check if boxes are too close (considering their sizes and minimum separation)
+            required_distance = new_radius + existing_radius + min_separation
+            if distance < required_distance:
+                return True
+        
+        return False
+    
     def _apply_randomization(self):
         """
         Apply randomization to environment parameters if enabled.
-        Randomizes start/goal positions and box position with constraints:
+        Randomizes start/goal positions and box positions with constraints:
         - All points inside walls with inset
         - Start and goal have at least 2/3 of map diagonal distance
-        - Box is positioned 2-3m from line connecting start and goal
+        - Boxes are positioned 2-3m from line connecting start and goal
+        - Boxes do not interfere with each other
         """
         if not self.config["randomize"]:
             return
         
-        rng = np.random
         cfg = self.config
+        
+        # Initialize random number generator with seed for reproducibility
+        random_seed = cfg.get("random_seed", None)
+        if random_seed is None:
+            # Generate a random seed if not specified
+            random_seed = np.random.randint(0, 2**31 - 1)
+            self.logger.info(f"Using random seed: {random_seed}")
+        else:
+            self.logger.info(f"Using fixed seed: {random_seed}")
+        
+        # Create seeded random number generator
+        rng = np.random.RandomState(random_seed)
+        
+        # Store the seed that was used for reference
+        self.config["_used_seed"] = random_seed
         map_size = cfg["map_size"]
         wall_inset = cfg["wall_inset"]
         
@@ -920,8 +1122,10 @@ class SpotSimulation:
                 self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
                 self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
             else:
-                # Box/sphere randomization
-                # Calculate box position: 2-3m from line connecting start and goal
+                # Box/sphere randomization for multiple boxes
+                num_boxes = cfg.get("num_boxes", 1)
+                min_separation = cfg.get("box_min_separation", 1.5)
+                
                 # Vector from start to goal
                 start_to_goal = goal_pos - start_pos
                 line_length = np.linalg.norm(start_to_goal)
@@ -930,43 +1134,102 @@ class SpotSimulation:
                 # Perpendicular direction (rotate 90 degrees)
                 perp_direction = np.array([-line_direction[1], line_direction[0]])
                 
-                # Random distance along the line (between 0.2 and 0.8 of line length)
-                t = rng.uniform(0.2, 0.8)
-                point_on_line = start_pos + t * start_to_goal
+                # Store multiple boxes configuration
+                boxes_config = []
+                existing_boxes = []  # For collision checking
                 
-                # Random distance perpendicular to line (between min and max)
-                perp_distance = rng.uniform(cfg["box_line_distance_min"], cfg["box_line_distance_max"])
-                # Random sign (left or right of line)
-                perp_distance *= rng.choice([-1, 1])
+                for box_idx in range(num_boxes):
+                    max_box_attempts = 500
+                    box_pos_2d = None
+                    box_scale = None
+                    
+                    for box_attempt in range(max_box_attempts):
+                        # Random distance along the line (between 0.2 and 0.8 of line length)
+                        t = rng.uniform(0.2, 0.8)
+                        point_on_line = start_pos + t * start_to_goal
+                        
+                        # Random distance perpendicular to line (between min and max)
+                        perp_distance = rng.uniform(cfg["box_line_distance_min"], cfg["box_line_distance_max"])
+                        # Random sign (left or right of line)
+                        perp_distance *= rng.choice([-1, 1])
+                        
+                        # Box position
+                        candidate_pos_2d = point_on_line + perp_distance * perp_direction
+                        
+                        # Clamp box position to valid area
+                        candidate_pos_2d = np.clip(candidate_pos_2d, min_coord, max_coord)
+                        
+                        # Randomize box scale in all three dimensions
+                        candidate_scale = [
+                            rng.uniform(*cfg["box_scale_range"][0]),  # x scale
+                            rng.uniform(*cfg["box_scale_range"][1]),  # y scale
+                            rng.uniform(*cfg["box_scale_range"][2])   # z scale
+                        ]
+                        
+                        # Check collision with existing boxes
+                        if not self._check_box_collision(candidate_pos_2d, candidate_scale, existing_boxes, min_separation):
+                            box_pos_2d = candidate_pos_2d
+                            box_scale = candidate_scale
+                            break
+                    
+                    if box_pos_2d is None:
+                        self.logger.warning(f"Failed to find valid position for box {box_idx + 1} after {max_box_attempts} attempts, skipping")
+                        continue
+                    
+                    # Generate random HSL color (hue random, saturation=100%, lightness=50%)
+                    # Excludes colors near Red, Green, Blue
+                    box_color = self._generate_random_hsl_color(rng, exclude_primary=True, exclusion_range=30.0)
+                    
+                    # Randomize box mass within specified range
+                    box_mass = rng.uniform(*cfg["box_mass_range"])
+                    
+                    # Store box configuration
+                    box_config = {
+                        "position": [
+                            float(box_pos_2d[0]),
+                            float(box_pos_2d[1]),
+                            cfg["box_position"][2]  # Keep original z coordinate
+                        ],
+                        "scale": box_scale,
+                        "color": box_color,
+                        "mass": box_mass
+                    }
+                    boxes_config.append(box_config)
+                    
+                    # Add to existing boxes for collision checking
+                    existing_boxes.append(box_config)
                 
-                # Box position
-                box_pos_2d = point_on_line + perp_distance * perp_direction
+                # Store boxes configuration
+                self.config["boxes_config"] = boxes_config
                 
-                # Clamp box position to valid area
-                box_pos_2d = np.clip(box_pos_2d, min_coord, max_coord)
-                
-                # Keep original z coordinate
-                self.config["box_position"] = [
-                    float(box_pos_2d[0]),
-                    float(box_pos_2d[1]),
-                    cfg["box_position"][2]
-                ]
-                
-                # Randomize box scale in all three dimensions
-                self.config["box_scale"] = [
-                    rng.uniform(*cfg["box_scale_range"][0]),  # x scale
-                    rng.uniform(*cfg["box_scale_range"][1]),  # y scale
-                    rng.uniform(*cfg["box_scale_range"][2])   # z scale
-                ]
-                
-                # Randomize box mass within specified range
-                self.config["box_mass"] = rng.uniform(*cfg["box_mass_range"])
+                # For backward compatibility, also set single box config (use first box if available)
+                if len(boxes_config) > 0:
+                    first_box = boxes_config[0]
+                    self.config["box_position"] = first_box["position"]
+                    self.config["box_scale"] = first_box["scale"]
+                    self.config["box_color"] = first_box["color"]
+                    self.config["box_mass"] = first_box["mass"]
                 
                 self.logger.info(f"Randomization applied:")
                 self.logger.info(f"  Start: [{start_pos[0]:.2f}, {start_pos[1]:.2f}]")
                 self.logger.info(f"  Goal: [{goal_pos[0]:.2f}, {goal_pos[1]:.2f}]")
                 self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
-                self.logger.info(f"  {object_type.capitalize()}: [{box_pos_2d[0]:.2f}, {box_pos_2d[1]:.2f}]")
+                self.logger.info(f"  {object_type.capitalize()}s: {len(boxes_config)} spawned")
+                # Log boxes as list format
+                boxes_info = []
+                for idx, box_cfg in enumerate(boxes_config):
+                    pos = box_cfg["position"]
+                    scale = box_cfg["scale"]
+                    color = box_cfg["color"]
+                    mass = box_cfg["mass"]
+                    boxes_info.append({
+                        'index': idx,
+                        'position': [float(pos[0]), float(pos[1]), float(pos[2])],
+                        'scale': [float(scale[0]), float(scale[1]), float(scale[2])],
+                        'color': [float(color[0]), float(color[1]), float(color[2])],
+                        'mass': float(mass)
+                    })
+                self.logger.info(f"  Boxes (list format): {boxes_info}")
         else:
             # Box is disabled, only log start and goal
             self.logger.info(f"Randomization applied (object disabled):")
@@ -975,25 +1238,34 @@ class SpotSimulation:
             self.logger.info(f"  Start-Goal distance: {np.linalg.norm(goal_pos - start_pos):.2f} m (min: {min_start_goal_distance:.2f} m)")
 
     # ===================== Object Management =====================
-    def _get_object_prim_path(self):
+    def _get_object_prim_path(self, box_idx=0):
         """
         Get the prim path for the current object based on object_type.
+        
+        Args:
+            box_idx: Index of the box (for multiple boxes)
         
         Returns:
             str: Prim path of the object
         """
         object_type = self.config.get("object_type", "none")
         if object_type == "box":
-            return "/World/ObstacleBox"
+            if box_idx == 0:
+                return "/World/ObstacleBox"  # Backward compatibility
+            else:
+                return f"/World/ObstacleBox{box_idx}"
         elif object_type == "sphere":
-            return "/World/ObstacleSphere"
+            if box_idx == 0:
+                return "/World/ObstacleSphere"  # Backward compatibility
+            else:
+                return f"/World/ObstacleSphere{box_idx}"
         elif object_type == "gate":
             return "/World/Gate"  # Base path for gate (contains GateL and GateR)
         else:
             # Return None for "none" or unknown types
             return None
     
-    def _create_object(self, cfg, position, scale, color):
+    def _create_object(self, cfg, position, scale, color, box_idx=0, mass=None):
         """
         Create a dynamic object in the environment based on object_type.
         Modular function to support different object types (box, sphere, gate).
@@ -1003,6 +1275,8 @@ class SpotSimulation:
             position: Object position [x, y, z]
             scale: Object scale [x, y, z]
             color: Object color [r, g, b]
+            box_idx: Index of the box (for multiple boxes)
+            mass: Object mass (if None, uses cfg["box_mass"])
         """
         object_type = cfg.get("object_type", "none")
         
@@ -1010,19 +1284,21 @@ class SpotSimulation:
             self.logger.warning("_create_object called with object_type='none', skipping object creation")
             return
         
-        object_path = self._get_object_prim_path()
+        object_path = self._get_object_prim_path(box_idx)
         
         if object_type == "box":
-            self._create_box_object(cfg, object_path, position, scale, color)
+            box_mass = mass if mass is not None else cfg["box_mass"]
+            self._create_box_object(cfg, object_path, position, scale, color, box_mass)
         elif object_type == "sphere":
-            self._create_sphere_object(cfg, object_path, position, scale, color)
+            box_mass = mass if mass is not None else cfg["box_mass"]
+            self._create_sphere_object(cfg, object_path, position, scale, color, box_mass)
         elif object_type == "gate":
             # Gate doesn't use position/scale/color from randomization, it calculates its own
             self._create_gate_object(cfg)
         else:
             self.logger.warning(f"Unknown object type '{object_type}', skipping object creation")
     
-    def _create_box_object(self, cfg, prim_path, position, scale, color):
+    def _create_box_object(self, cfg, prim_path, position, scale, color, mass):
         """
         Create a dynamic box object.
         
@@ -1032,12 +1308,13 @@ class SpotSimulation:
             position: Box position [x, y, z]
             scale: Box scale [x, y, z]
             color: Box color [r, g, b]
+            mass: Box mass (kg)
         """
         # Create dynamic box
         self.world.scene.add(DynamicCuboid(
-            prim_path=prim_path, name="obstacle_box",
+            prim_path=prim_path, name=f"obstacle_box_{prim_path.split('/')[-1]}",
             position=position, scale=scale, color=color,
-            mass=cfg["box_mass"], linear_velocity=np.array([0.0, 0.0, 0.0])
+            mass=mass, linear_velocity=np.array([0.0, 0.0, 0.0])
         ))
         
         # Apply physics material to box (friction and restitution)
@@ -1059,9 +1336,17 @@ class SpotSimulation:
                     [Sdf.Path(physics_material_path)]
                 )
         
-        self.logger.info(f"Box object created at {prim_path}")
+        # Log box creation with list format for compatibility
+        box_info = {
+            'prim_path': prim_path,
+            'position': [float(position[0]), float(position[1]), float(position[2])],
+            'scale': [float(scale[0]), float(scale[1]), float(scale[2])],
+            'color': [float(color[0]), float(color[1]), float(color[2])],
+            'mass': float(mass)
+        }
+        self.logger.info(f"Box object created: {box_info}")
     
-    def _create_sphere_object(self, cfg, prim_path, position, scale, color):
+    def _create_sphere_object(self, cfg, prim_path, position, scale, color, mass):
         """
         Create a dynamic sphere object.
         
@@ -1071,6 +1356,7 @@ class SpotSimulation:
             position: Sphere position [x, y, z]
             scale: Sphere scale [x, y, z] (radius will be average of x, y, z)
             color: Sphere color [r, g, b]
+            mass: Sphere mass (kg)
         """
         # For sphere, use average of scale dimensions as radius
         radius = np.mean(scale) if len(scale) >= 3 else scale[0] if len(scale) > 0 else 0.5
@@ -1093,7 +1379,7 @@ class SpotSimulation:
             
             # Add rigid body API
             rigid_body = UsdPhysics.RigidBodyAPI.Apply(sphere_prim)
-            rigid_body.CreateMassAttr().Set(cfg["box_mass"])
+            rigid_body.CreateMassAttr().Set(mass)
             
             # Apply physics material
             physics_material_path = "/World/Materials/SpherePhysicsMaterial"
@@ -1294,6 +1580,24 @@ class SpotSimulation:
         )
     
     # ===================== Object Creation Methods =====================
+    def _get_rng(self):
+        """
+        Get the random number generator for this simulation.
+        Uses the seed from config if available, otherwise creates a new one.
+        
+        Returns:
+            numpy RandomState instance
+        """
+        cfg = self.config
+        random_seed = cfg.get("_used_seed", None)
+        if random_seed is None:
+            # If no seed was used yet, get or generate one
+            random_seed = cfg.get("random_seed", None)
+            if random_seed is None:
+                random_seed = np.random.randint(0, 2**31 - 1)
+            cfg["_used_seed"] = random_seed
+        return np.random.RandomState(random_seed)
+    
     def _create_gate_object(self, cfg):
         """
         Create a gate object with two collinear walls (GateL and GateR) on Y-axis.
@@ -1308,7 +1612,7 @@ class SpotSimulation:
         if self.start_pos is None or self.goal_pos is None:
             raise RuntimeError("Start and goal positions must be set before creating gate")
         
-        rng = np.random
+        rng = self._get_rng()
         start_pos = self.start_pos
         goal_pos = self.goal_pos
         
@@ -1538,11 +1842,13 @@ class SpotSimulation:
         # Convert configuration values to numpy arrays for Isaac Sim API
         ground_color = np.array(cfg["ground_color"])
         wall_color = np.array(cfg["wall_color"])
-        box_color = np.array(cfg["box_color"])
-        box_pos = np.array(cfg["box_position"])
-        box_scale = np.array(cfg["box_scale"])
         start_pos = np.array(cfg["start_position"])
         goal_pos = np.array(cfg["goal_position"])
+        
+        # For backward compatibility, get single box config if boxes_config doesn't exist
+        box_color = np.array(cfg.get("box_color", [0.6, 0.4, 0.2]))
+        box_pos = np.array(cfg.get("box_position", [2.0, 0.0, 0.25]))
+        box_scale = np.array(cfg.get("box_scale", [1.0, 1.0, 0.5]))
         
         # Store positions for robot setup
         self.start_pos = start_pos
@@ -1610,10 +1916,59 @@ class SpotSimulation:
             color=wall_color
         ))
         
-        # 5. Create dynamic object (can be pushed by robot) - only if object_type is not "none"
+        # 5. Create dynamic objects (can be pushed by robot) - only if object_type is not "none"
         object_type = cfg.get("object_type", "none")
         if object_type != "none":
-            self._create_object(cfg, box_pos, box_scale, box_color)
+            # Check if we have multiple boxes configuration from randomization
+            boxes_config = cfg.get("boxes_config", None)
+            num_boxes = cfg.get("num_boxes", 1)
+            
+            if boxes_config is not None and len(boxes_config) > 0:
+                # Spawn multiple boxes from randomization
+                for box_idx, box_cfg in enumerate(boxes_config):
+                    box_pos = np.array(box_cfg["position"])
+                    box_scale = np.array(box_cfg["scale"])
+                    box_color = np.array(box_cfg["color"])
+                    box_mass = box_cfg["mass"]
+                    self._create_object(cfg, box_pos, box_scale, box_color, box_idx=box_idx, mass=box_mass)
+            elif num_boxes > 1 and not cfg.get("randomize", False):
+                # Multiple boxes but randomization disabled - create boxes at fixed offsets
+                base_pos = box_pos
+                base_scale = box_scale
+                base_color = box_color
+                base_mass = cfg.get("box_mass", 5.0)
+                min_separation = cfg.get("box_min_separation", 1.5)
+                
+                # Create boxes in a grid pattern around the base position
+                boxes_per_row = int(np.ceil(np.sqrt(num_boxes)))
+                spacing = max(base_scale[0], base_scale[1]) + min_separation
+                
+                boxes_config = []
+                for box_idx in range(num_boxes):
+                    row = box_idx // boxes_per_row
+                    col = box_idx % boxes_per_row
+                    offset_x = (col - (boxes_per_row - 1) / 2.0) * spacing
+                    offset_y = (row - (boxes_per_row - 1) / 2.0) * spacing
+                    
+                    box_pos_offset = np.array([
+                        base_pos[0] + offset_x,
+                        base_pos[1] + offset_y,
+                        base_pos[2]
+                    ])
+                    
+                    # Generate random HSL color for each box (hue random, saturation=100%, lightness=50%)
+                    # Excludes colors near Red, Green, Blue
+                    rng = self._get_rng()
+                    box_color_offset = self._generate_random_hsl_color(rng, exclude_primary=True, exclusion_range=30.0)
+                    
+                    self._create_object(cfg, box_pos_offset, base_scale, box_color_offset, box_idx=box_idx, mass=base_mass)
+            else:
+                # Backward compatibility: spawn single box with random HSL color
+                # Generate random HSL color (hue random, saturation=100%, lightness=50%)
+                # Excludes colors near Red, Green, Blue
+                rng = self._get_rng()
+                random_box_color = self._generate_random_hsl_color(rng, exclude_primary=True, exclusion_range=30.0)
+                self._create_object(cfg, box_pos, box_scale, random_box_color, box_idx=0)
         else:
             self.logger.info("Object spawning disabled (object_type='none')")
         
@@ -2046,11 +2401,10 @@ class SpotSimulation:
                         self.first_command_received = True
                         self.logger.info("First keyboard command received - starting data saving")
                 
-                # Get object position and orientation from stage
+                # Get object positions and orientations from stage
                 # Calculate L1 distance metric based on object type
-                l1_distance = 0.0
-                object_pos = np.array([0.0, 0.0, 0.0])
-                object_quat = np.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion
+                # Always use list format for compatibility (even for single box)
+                boxes_data = []
                 goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
                 
                 object_type = self.config.get("object_type", "none")
@@ -2061,48 +2415,123 @@ class SpotSimulation:
                         l1_distance = np.sum(np.abs(robot_pos_2d - goal_pos_2d))
                         
                         # Gate is static, get position from config for CSV
+                        gate_pos = np.array([0.0, 0.0, 0.0])
+                        gate_quat = np.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion
+                        
                         if "gate_pos" in self.config:
                             gate_pos_2d = self.config["gate_pos"]
-                            object_pos = np.array([gate_pos_2d[0], gate_pos_2d[1], 0.0])
+                            gate_pos = np.array([gate_pos_2d[0], gate_pos_2d[1], 0.0])
                         # Get orientation from gate yaw
                         if "gate_yaw" in self.config:
                             gate_yaw = self.config["gate_yaw"]
                             half_yaw = gate_yaw / 2.0
-                            object_quat = np.array([
+                            gate_quat = np.array([
                                 np.cos(half_yaw), 0.0, 0.0, np.sin(half_yaw)
                             ])
+                        
+                        # Gate as single "box" in list format
+                        boxes_data.append({
+                            'pos': gate_pos,
+                            'quat': gate_quat,
+                            'l1_distance': l1_distance
+                        })
                     else:
-                        # Dynamic objects (box, sphere): calculate box/sphere <-> goal L1 distance
-                        object_path = self._get_object_prim_path()
-                        object_prim = self.stage.GetPrimAtPath(object_path)
-                        if object_prim.IsValid():
-                            # Get world transform of the object
-                            object_xform = UsdGeom.Xformable(object_prim)
-                            object_transform = object_xform.ComputeLocalToWorldTransform(0)  # Get transform at time 0
-                            object_pos_world = object_transform.ExtractTranslation()
-                            object_pos = np.array([object_pos_world[0], object_pos_world[1], object_pos_world[2]])
-                            
-                            # Get object orientation (quaternion)
-                            object_rotation = object_transform.ExtractRotationQuat()
-                            object_quat = np.array([
-                                object_rotation.GetReal(),
-                                object_rotation.GetImaginary()[0],
-                                object_rotation.GetImaginary()[1],
-                                object_rotation.GetImaginary()[2]
-                            ])
-                            
-                            # Calculate L1 distance (Manhattan distance) between object and goal
-                            l1_distance = np.sum(np.abs(object_pos[:2] - goal_pos_2d))
+                        # Dynamic objects (box, sphere): get all boxes
+                        boxes_config = self.config.get("boxes_config", None)
+                        num_boxes = self.config.get("num_boxes", 1)
+                        
+                        if boxes_config is not None and len(boxes_config) > 0:
+                            # Multiple boxes: get each box's position and orientation
+                            for box_idx, box_cfg in enumerate(boxes_config):
+                                box_path = self._get_object_prim_path(box_idx)
+                                box_prim = self.stage.GetPrimAtPath(box_path)
+                                
+                                if box_prim.IsValid():
+                                    # Get world transform of the box
+                                    box_xform = UsdGeom.Xformable(box_prim)
+                                    box_transform = box_xform.ComputeLocalToWorldTransform(0)
+                                    box_pos_world = box_transform.ExtractTranslation()
+                                    box_pos = np.array([box_pos_world[0], box_pos_world[1], box_pos_world[2]])
+                                    
+                                    # Get box orientation (quaternion)
+                                    box_rotation = box_transform.ExtractRotationQuat()
+                                    box_quat = np.array([
+                                        box_rotation.GetReal(),
+                                        box_rotation.GetImaginary()[0],
+                                        box_rotation.GetImaginary()[1],
+                                        box_rotation.GetImaginary()[2]
+                                    ])
+                                    
+                                    # Calculate L1 distance (Manhattan distance) between box and goal
+                                    box_l1_distance = np.sum(np.abs(box_pos[:2] - goal_pos_2d))
+                                    
+                                    boxes_data.append({
+                                        'pos': box_pos,
+                                        'quat': box_quat,
+                                        'l1_distance': box_l1_distance
+                                    })
+                                else:
+                                    # Box not found, use default values
+                                    boxes_data.append({
+                                        'pos': np.array([0.0, 0.0, 0.0]),
+                                        'quat': np.array([1.0, 0.0, 0.0, 0.0]),
+                                        'l1_distance': 0.0
+                                    })
+                        else:
+                            # Single box (backward compatibility)
+                            object_path = self._get_object_prim_path(0)
+                            object_prim = self.stage.GetPrimAtPath(object_path)
+                            if object_prim.IsValid():
+                                # Get world transform of the object
+                                object_xform = UsdGeom.Xformable(object_prim)
+                                object_transform = object_xform.ComputeLocalToWorldTransform(0)
+                                object_pos_world = object_transform.ExtractTranslation()
+                                object_pos = np.array([object_pos_world[0], object_pos_world[1], object_pos_world[2]])
+                                
+                                # Get object orientation (quaternion)
+                                object_rotation = object_transform.ExtractRotationQuat()
+                                object_quat = np.array([
+                                    object_rotation.GetReal(),
+                                    object_rotation.GetImaginary()[0],
+                                    object_rotation.GetImaginary()[1],
+                                    object_rotation.GetImaginary()[2]
+                                ])
+                                
+                                # Calculate L1 distance (Manhattan distance) between object and goal
+                                l1_distance = np.sum(np.abs(object_pos[:2] - goal_pos_2d))
+                                
+                                boxes_data.append({
+                                    'pos': object_pos,
+                                    'quat': object_quat,
+                                    'l1_distance': l1_distance
+                                })
+                            else:
+                                # No object found
+                                boxes_data.append({
+                                    'pos': np.array([0.0, 0.0, 0.0]),
+                                    'quat': np.array([1.0, 0.0, 0.0, 0.0]),
+                                    'l1_distance': 0.0
+                                })
                 else:
                     # No object: calculate robot <-> goal L1 distance
                     robot_pos_2d = robot_pos[:2]
                     l1_distance = np.sum(np.abs(robot_pos_2d - goal_pos_2d))
+                    
+                    # Add empty box entry for compatibility
+                    boxes_data.append({
+                        'pos': np.array([0.0, 0.0, 0.0]),
+                        'quat': np.array([1.0, 0.0, 0.0, 0.0]),
+                        'l1_distance': l1_distance
+                    })
+                
+                # Get primary l1_distance for task completion check (use first box or robot distance)
+                primary_l1_distance = boxes_data[0]['l1_distance'] if len(boxes_data) > 0 else l1_distance
                 
                 # Check if task is complete (distance < 1m)
-                if self.task_in_progress and l1_distance < 1.0:
+                if self.task_in_progress and primary_l1_distance < 1.0:
                     self.task_in_progress = False
                     self._change_goal_color_to_green()
-                    self.logger.info(f"Task completed! Distance to goal: {l1_distance:.3f}m < 1.0m")
+                    self.logger.info(f"Task completed! Distance to goal: {primary_l1_distance:.3f}m < 1.0m")
                     self.logger.info("Logging stopped")
                 
                 # Save experiment data (CSV and camera images) only after first command and while task is in progress
@@ -2113,7 +2542,12 @@ class SpotSimulation:
                         self.experiment_start_time = datetime.now()
                         self.logger.info("Experiment data saving started")
                     
-                    self._save_experiment_data(robot_pos, robot_quat, object_pos, object_quat, l1_distance)
+                    # For backward compatibility, also provide single object format
+                    object_pos = boxes_data[0]['pos'] if len(boxes_data) > 0 else np.array([0.0, 0.0, 0.0])
+                    object_quat = boxes_data[0]['quat'] if len(boxes_data) > 0 else np.array([1.0, 0.0, 0.0, 0.0])
+                    l1_distance = boxes_data[0]['l1_distance'] if len(boxes_data) > 0 else 0.0
+                    
+                    self._save_experiment_data(robot_pos, robot_quat, boxes_data, object_pos, object_quat, l1_distance)
                 
                 # Log at DEBUG level: detailed robot state
                 self.logger.debug(
