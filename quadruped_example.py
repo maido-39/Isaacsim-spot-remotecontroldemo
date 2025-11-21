@@ -39,6 +39,7 @@ from isaacsim.core.api.materials import PreviewSurface
 import omni.kit.commands
 from isaacsim.robot.policy.examples.robots import SpotFlatTerrainPolicy
 from keyboard_controller import KeyboardController
+import colorsys
 
 
 # ===================== Default Configuration =====================
@@ -919,6 +920,41 @@ class SpotSimulation:
         
         return np.array([roll, pitch, yaw])
 
+    def _generate_random_box_colors(self, rng, num_boxes):
+        """
+        Generate random colors for boxes using HSL color space.
+        
+        Args:
+            rng: Random number generator (numpy RandomState)
+            num_boxes: Number of boxes (determines list length)
+        
+        Returns:
+            List of RGB colors [[r, g, b], ...] with values in [0, 1] range
+        """
+        colors = []
+        for _ in range(num_boxes):
+            # Generate random hue (0-360 degrees)
+            hue = rng.uniform(0, 360)
+            
+            # Fixed saturation and lightness: HSL[hue, 100%, 50%]
+            # colorsys uses HLS format and expects values in 0-1 range
+            h_norm = (hue % 360) / 360.0  # Normalize hue to [0, 1]
+            saturation = 1.0  # 100% saturation
+            lightness = 0.5   # 50% lightness
+            
+            # Convert HSL to RGB
+            # colorsys.hls_to_rgb expects (hue, lightness, saturation) in that order
+            rgb_tuple = colorsys.hls_to_rgb(h_norm, lightness, saturation)
+            
+            # Convert to RGB list [R, G, B] with values in [0, 1] range
+            rgb = [
+                max(0.0, min(1.0, float(rgb_tuple[0]))),  # Red
+                max(0.0, min(1.0, float(rgb_tuple[1]))),  # Green
+                max(0.0, min(1.0, float(rgb_tuple[2])))   # Blue
+            ]
+            colors.append(rgb)
+        
+        return colors
 
     def _check_box_collision(self, new_pos_2d, new_scale, existing_boxes, min_separation):
         """
@@ -1058,8 +1094,10 @@ class SpotSimulation:
                 boxes_config = []
                 existing_boxes = []  # For collision checking
                 
-                # Use default box color from config for all boxes
-                box_color = np.array(cfg.get("box_color", [0.6, 0.4, 0.2]))
+                # Step 1: Check box numbers and seed structure
+                # Step 2: Generate random color list (length = box nums)
+                # Generate random HSL colors: HSL[random_hue, 100%, 50%] -> RGB
+                box_colors = self._generate_random_box_colors(rng, num_boxes)
                 
                 for box_idx in range(num_boxes):
                     max_box_attempts = 500
@@ -1102,6 +1140,9 @@ class SpotSimulation:
                     # Randomize box mass within specified range
                     box_mass = rng.uniform(*cfg["box_mass_range"])
                     
+                    # Step 3: Apply random color to box (from pre-generated color list)
+                    box_color = box_colors[box_idx]
+                    
                     # Store box configuration
                     box_config = {
                         "position": [
@@ -1110,7 +1151,7 @@ class SpotSimulation:
                             cfg["box_position"][2]  # Keep original z coordinate
                         ],
                         "scale": box_scale,
-                        "color": box_color.tolist(),  # Use default color from config
+                        "color": box_color,  # Use random color from generated list
                         "mass": box_mass
                     }
                     boxes_config.append(box_config)
@@ -1911,8 +1952,9 @@ class SpotSimulation:
                 boxes_per_row = int(np.ceil(np.sqrt(num_boxes)))
                 spacing = max(base_scale[0], base_scale[1]) + min_separation
                 
-                # Use default box color from config for all boxes
-                box_color = np.array(cfg.get("box_color", [0.6, 0.4, 0.2]))
+                # Generate random colors for boxes: HSL[random_hue, 100%, 50%] -> RGB
+                rng = self._get_rng()
+                box_colors = self._generate_random_box_colors(rng, num_boxes)
                 
                 for box_idx in range(num_boxes):
                     row = box_idx // boxes_per_row
@@ -1926,10 +1968,14 @@ class SpotSimulation:
                         base_pos[2]
                     ])
                     
+                    # Apply random color from generated list
+                    box_color = np.array(box_colors[box_idx])
                     self._create_object(cfg, box_pos_offset, base_scale, box_color, box_idx=box_idx, mass=base_mass)
             else:
-                # Backward compatibility: spawn single box with default color from config
-                box_color = np.array(cfg.get("box_color", [0.6, 0.4, 0.2]))
+                # Backward compatibility: spawn single box with random color
+                rng = self._get_rng()
+                box_colors = self._generate_random_box_colors(rng, 1)
+                box_color = np.array(box_colors[0])
                 self._create_object(cfg, box_pos, box_scale, box_color, box_idx=0)
         else:
             self.logger.info("Object spawning disabled (object_type='none')")
