@@ -219,8 +219,9 @@ The core simulation class `SpotSimulation` provides:
 
 4. **Experiment Data Collection** (can be disabled via CLI)
    - **Automatic start**: Data saving begins after first keyboard command
+   - **Data saving frequency**: 10 Hz (10 times per second, every 0.1 seconds)
    - **CSV logging**: Robot and object positions/orientations at 10Hz (optional)
-   - **Image capture**: Synchronized ego and top camera images (optional)
+   - **Image capture**: Synchronized ego and top camera images at 10Hz (optional)
    - **Configuration save**: Actual values used (not ranges)
    - **Terminal logging**: All console output saved to `terminal.log`
 
@@ -415,6 +416,23 @@ The simulation runs at:
 5. **Task completion** triggers goal color change to green
 6. **Cleanup** closes files and detaches camera annotators
 
+### Data Saving Frequency
+
+**Frequency: 10 Hz** (10 times per second, every 0.1 seconds)
+
+- **Physics rate**: 500 Hz (physics steps per second)
+- **Logging rate**: 10 Hz (every 50 physics steps)
+  - `logging_counter` increments each physics step
+  - When `logging_counter >= 50`, it resets and triggers data saving
+  - Calculation: 500 Hz ÷ 50 = 10 Hz
+
+**Data saved at 10 Hz includes:**
+- CSV data (robot position, orientation, box positions, etc.)
+- Camera images (ego and top view) - synchronized with CSV logging
+
+**Time between saves**: 0.1 seconds (100 ms)
+**Physics steps per save**: 50 steps
+
 ## Project Structure
 
 ```
@@ -572,6 +590,8 @@ sim = SpotSimulation(
 - **Rendering**: 50Hz (20ms timestep)
 - **Command update**: 50Hz (every 10 physics steps)
 - **Data logging**: 10Hz (every 50 physics steps, if enabled)
+  - CSV data and camera images saved at 10Hz
+  - Time between saves: 0.1 seconds (100 ms)
 - **Image capture**: 10Hz (synchronized with logging, if enabled)
 - **Performance logging**: 1Hz (every 500 physics steps)
 
