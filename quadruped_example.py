@@ -606,20 +606,15 @@ class SpotSimulation:
                 self.csv_file = open(csv_path, 'w', newline='')
                 self.csv_writer = csv.writer(self.csv_file)
                 
-                # Write CSV header - use JSON-encoded lists for box properties
-                # This makes the CSV structure consistent regardless of number of boxes
+                # Write CSV header - one row per box with obj_index
+                # Structure: timestamp, frame_num, obj_index, robot data, box data
                 header = [
-                    'timestamp', 'frame_num',
+                    'timestamp', 'frame_num', 'obj_index',
                     'robot_pos_x', 'robot_pos_y', 'robot_pos_z',
                     'robot_orient_w', 'robot_orient_x', 'robot_orient_y', 'robot_orient_z',
-                    'box_positions',      # JSON list: [[x0,y0,z0], [x1,y1,z1], ...]
-                    'box_orientations',   # JSON list: [[w0,x0,y0,z0], [w1,x1,y1,z1], ...]
-                    'box_l1_distances',  # JSON list: [dist0, dist1, ...]
-                    'num_boxes',          # Number of boxes in this row
-                    # For backward compatibility, also add single object columns (will be same as box[0] if exists)
-                    'object_pos_x', 'object_pos_y', 'object_pos_z',
-                    'object_orient_w', 'object_orient_x', 'object_orient_y', 'object_orient_z',
-                    'l1_distance_to_goal'
+                    'box_pos_x', 'box_pos_y', 'box_pos_z',
+                    'box_orient_w', 'box_orient_x', 'box_orient_y', 'box_orient_z',
+                    'box_l1_distance'
                 ]
                 
                 self.csv_writer.writerow(header)
@@ -844,66 +839,33 @@ class SpotSimulation:
             if not isinstance(boxes_data, list):
                 boxes_data = [boxes_data]
             
-            # Write CSV row (only if CSV logging is enabled)
+            # Write CSV rows (only if CSV logging is enabled)
+            # Write one row per box with obj_index
             if self.enable_csv_logging:
-                # Extract box properties into lists
-                box_positions = []
-                box_orientations = []
-                box_l1_distances = []
-                
-                for box_data in boxes_data:
-                    # Position as [x, y, z]
-                    box_positions.append([
-                        float(box_data['pos'][0]),
-                        float(box_data['pos'][1]),
-                        float(box_data['pos'][2])
-                    ])
-                    # Orientation as [w, x, y, z]
-                    box_orientations.append([
-                        float(box_data['quat'][0]),
-                        float(box_data['quat'][1]),
-                        float(box_data['quat'][2]),
-                        float(box_data['quat'][3])
-                    ])
-                    # L1 distance as float
-                    box_l1_distances.append(float(box_data['l1_distance']))
-                
-                # Encode lists as JSON strings for CSV storage
-                box_positions_json = json.dumps(box_positions)
-                box_orientations_json = json.dumps(box_orientations)
-                box_l1_distances_json = json.dumps(box_l1_distances)
-                num_boxes = len(boxes_data)
-                
-                # Get first box data for backward compatibility columns
-                if len(boxes_data) > 0:
-                    first_box = boxes_data[0]
-                    object_pos = first_box['pos']
-                    object_quat = first_box['quat']
-                    l1_distance = first_box['l1_distance']
-                elif object_pos is not None and object_quat is not None and l1_distance is not None:
-                    # Use provided fallback values
-                    pass
+                # Ensure boxes_data is not empty
+                if len(boxes_data) == 0:
+                    # If no boxes, write a single row with obj_index=-1 and default values
+                    row = [
+                        timestamp_str, self.frame_counter, -1,
+                        float(robot_pos[0]), float(robot_pos[1]), float(robot_pos[2]),
+                        float(robot_quat[0]), float(robot_quat[1]), float(robot_quat[2]), float(robot_quat[3]),
+                        0.0, 0.0, 0.0,  # box_pos (default)
+                        1.0, 0.0, 0.0, 0.0,  # box_orient (default quaternion)
+                        0.0  # box_l1_distance (default)
+                    ]
+                    self.csv_writer.writerow(row)
                 else:
-                    # Default values
-                    object_pos = np.array([0.0, 0.0, 0.0])
-                    object_quat = np.array([1.0, 0.0, 0.0, 0.0])
-                    l1_distance = 0.0
-                
-                row = [
-                    timestamp_str, self.frame_counter,
-                    robot_pos[0], robot_pos[1], robot_pos[2],
-                    robot_quat[0], robot_quat[1], robot_quat[2], robot_quat[3],
-                    box_positions_json,      # JSON-encoded list of positions
-                    box_orientations_json,   # JSON-encoded list of orientations
-                    box_l1_distances_json,  # JSON-encoded list of distances
-                    num_boxes,               # Number of boxes
-                    # Backward compatibility columns (first box or fallback)
-                    float(object_pos[0]), float(object_pos[1]), float(object_pos[2]),
-                    float(object_quat[0]), float(object_quat[1]), float(object_quat[2]), float(object_quat[3]),
-                    float(l1_distance)
-                ]
-                
-                self.csv_writer.writerow(row)
+                    # Write one row per box
+                    for obj_index, box_data in enumerate(boxes_data):
+                        row = [
+                            timestamp_str, self.frame_counter, obj_index,
+                            float(robot_pos[0]), float(robot_pos[1]), float(robot_pos[2]),
+                            float(robot_quat[0]), float(robot_quat[1]), float(robot_quat[2]), float(robot_quat[3]),
+                            float(box_data['pos'][0]), float(box_data['pos'][1]), float(box_data['pos'][2]),
+                            float(box_data['quat'][0]), float(box_data['quat'][1]), float(box_data['quat'][2]), float(box_data['quat'][3]),
+                            float(box_data['l1_distance'])
+                        ]
+                        self.csv_writer.writerow(row)
                 
                 # Flush every 10 frames to ensure data is written
                 if self.frame_counter % 10 == 0:

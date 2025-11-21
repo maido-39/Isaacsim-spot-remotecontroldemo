@@ -153,6 +153,19 @@ def plot_experiment(experiment_dir):
     print(f"Loading experiment data from: {experiment_dir}")
     config, df = load_experiment_data(experiment_dir)
     
+    # Handle new data format: multiple rows per timestamp (one per object)
+    # Extract unique robot trajectory (group by timestamp, take first row)
+    if 'obj_index' in df.columns:
+        # New format: multiple objects per timestamp
+        df_robot = df.groupby('timestamp').first().reset_index()
+        unique_times = df_robot['timestamp'].values
+        print(f"Found {len(df_robot)} unique timestamps with {df['obj_index'].nunique()} objects")
+    else:
+        # Old format: single row per timestamp
+        df_robot = df.copy()
+        unique_times = df_robot['timestamp'].values
+        print(f"Found {len(df_robot)} timestamps (old format)")
+    
     # Load camera images
     camera_images = load_camera_images(experiment_dir)
     has_ego = len(camera_images['ego']) > 0
@@ -191,8 +204,8 @@ def plot_experiment(experiment_dir):
         ax_vel_xy = fig.add_subplot(gs[0, 1])  # XY velocity: top right
         ax_metric = fig.add_subplot(gs[1, :])  # L1 metric: bottom full width
     
-    # Get time gradient for coloring
-    time_norm = create_gradient_colormap(df['timestamp'].values)
+    # Get time gradient for coloring (using unique timestamps)
+    time_norm = create_gradient_colormap(unique_times)
     cmap = plt.cm.viridis
     
     # ==================== MAP PLOT ====================
@@ -220,23 +233,24 @@ def plot_experiment(experiment_dir):
         ax_map.scatter(goal[0], goal[1], c='red', s=400, marker='*', 
                       edgecolors='black', linewidths=2, label='Goal', zorder=10)
     
-    # Plot robot trajectory with gradient
-    robot_x = df['robot_pos_x'].values
-    robot_y = df['robot_pos_y'].values
+    # Plot robot trajectory with gradient (using unique robot data)
+    robot_x = df_robot['robot_pos_x'].values
+    robot_y = df_robot['robot_pos_y'].values
     
-    points = np.array([robot_x, robot_y]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    
-    lc_robot = LineCollection(segments, cmap=cmap, linewidth=2.5, alpha=0.8)
-    lc_robot.set_array(time_norm[:-1])
-    ax_map.add_collection(lc_robot)
+    if len(robot_x) > 1:
+        points = np.array([robot_x, robot_y]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        
+        lc_robot = LineCollection(segments, cmap=cmap, linewidth=2.5, alpha=0.8)
+        lc_robot.set_array(time_norm[:-1])
+        ax_map.add_collection(lc_robot)
     
     # Plot robot orientations at intervals
-    n_points = len(df)
+    n_points = len(df_robot)
     arrow_interval = max(1, n_points // 15)
     
     for i in range(0, n_points, arrow_interval):
-        row = df.iloc[i]
+        row = df_robot.iloc[i]
         yaw = quaternion_to_yaw(row['robot_orient_w'], row['robot_orient_x'],
                                 row['robot_orient_y'], row['robot_orient_z'])
         
@@ -254,35 +268,52 @@ def plot_experiment(experiment_dir):
     current_marker, = ax_map.plot([], [], 'ro', markersize=15, markeredgecolor='white',
                                    markeredgewidth=2, zorder=15, label='Current')
     
-    # Plot object trajectory if dynamic
+    # Plot object trajectories if dynamic objects exist
     object_type = config.get('object_type', 'box')
-    use_object = config.get('use_object', True)
+    num_boxes = config.get('num_boxes', 1)
     
-    if use_object and object_type in ['box', 'sphere']:
-        object_x = df['object_pos_x'].values
-        object_y = df['object_pos_y'].values
+    if object_type in ['box', 'sphere'] and 'obj_index' in df.columns:
+        # Plot each object's trajectory separately
+        obj_indices = sorted(df['obj_index'].unique())
+        object_colors = plt.cm.Set3(np.linspace(0, 1, len(obj_indices)))
         
-        if not (np.allclose(object_x, 0.0) and np.allclose(object_y, 0.0)):
-            obj_points = np.array([object_x, object_y]).T.reshape(-1, 1, 2)
-            obj_segments = np.concatenate([obj_points[:-1], obj_points[1:]], axis=1)
+        for obj_idx, obj_color in zip(obj_indices, object_colors):
+            df_obj = df[df['obj_index'] == obj_idx].sort_values('timestamp')
             
-            lc_object = LineCollection(obj_segments, cmap=cmap, linewidth=2.0, 
-                                      alpha=0.6, linestyle='--')
-            lc_object.set_array(time_norm[:-1])
-            ax_map.add_collection(lc_object)
+            if len(df_obj) == 0:
+                continue
+            
+            obj_x = df_obj['box_pos_x'].values
+            obj_y = df_obj['box_pos_y'].values
+            obj_times = df_obj['timestamp'].values
+            
+            # Skip if object position is all zeros (not valid)
+            if np.allclose(obj_x, 0.0) and np.allclose(obj_y, 0.0):
+                continue
+            
+            # Plot trajectory
+            if len(obj_x) > 1:
+                obj_points = np.array([obj_x, obj_y]).T.reshape(-1, 1, 2)
+                obj_segments = np.concatenate([obj_points[:-1], obj_points[1:]], axis=1)
+                
+                obj_time_norm = create_gradient_colormap(obj_times)
+                lc_object = LineCollection(obj_segments, cmap=cmap, linewidth=2.0, 
+                                          alpha=0.6, linestyle='--')
+                lc_object.set_array(obj_time_norm[:-1])
+                ax_map.add_collection(lc_object)
             
             # Mark initial and final positions
-            ax_map.scatter(object_x[0], object_y[0], c='orange', s=200, 
+            ax_map.scatter(obj_x[0], obj_y[0], c=[obj_color], s=200, 
                           marker='s', edgecolors='black', linewidths=1.5,
-                          label=f'{object_type.capitalize()} Start', zorder=8)
-            ax_map.scatter(object_x[-1], object_y[-1], c='brown', s=200, 
-                          marker='s', edgecolors='black', linewidths=1.5,
-                          label=f'{object_type.capitalize()} End', zorder=8)
+                          label=f'{object_type.capitalize()} {obj_idx} Start', zorder=8)
+            ax_map.scatter(obj_x[-1], obj_y[-1], c=[obj_color], s=200, 
+                          marker='^', edgecolors='black', linewidths=1.5,
+                          label=f'{object_type.capitalize()} {obj_idx} End', zorder=8)
     
     # Add colorbar (more compact)
     sm = plt.cm.ScalarMappable(cmap=cmap, 
-                               norm=plt.Normalize(vmin=df['timestamp'].min(), 
-                                                 vmax=df['timestamp'].max()))
+                               norm=plt.Normalize(vmin=unique_times.min(), 
+                                                 vmax=unique_times.max()))
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax_map, orientation='horizontal', 
                        pad=0.08, aspect=35, shrink=0.7)
@@ -298,33 +329,37 @@ def plot_experiment(experiment_dir):
     
     # ==================== XY VELOCITY PLOT ====================
     
-    dt = df['timestamp'].diff()
-    dvx = df['robot_pos_x'].diff() / dt
-    dvy = df['robot_pos_y'].diff() / dt
+    # Use unique robot data for velocity calculation
+    dt = df_robot['timestamp'].diff()
+    dvx = df_robot['robot_pos_x'].diff() / dt
+    dvy = df_robot['robot_pos_y'].diff() / dt
     
-    yaw = df.apply(lambda row: quaternion_to_yaw(row['robot_orient_w'], 
+    yaw = df_robot.apply(lambda row: quaternion_to_yaw(row['robot_orient_w'], 
                                                   row['robot_orient_x'],
                                                   row['robot_orient_y'], 
                                                   row['robot_orient_z']), axis=1)
     dyaw = yaw.diff() / dt
     
-    times = df['timestamp'].values
+    times = unique_times
     
     # Create gradient colored lines for XY velocities
-    # vx line
-    points_vx = np.array([times[1:], dvx[1:]]).T.reshape(-1, 1, 2)
-    segments_vx = np.concatenate([points_vx[:-1], points_vx[1:]], axis=1)
-    lc_vx = LineCollection(segments_vx, cmap=cmap, linewidth=2, alpha=0.8, label='vx')
-    lc_vx.set_array(time_norm[1:-1])
-    ax_vel_xy.add_collection(lc_vx)
-    
-    # vy line
-    points_vy = np.array([times[1:], dvy[1:]]).T.reshape(-1, 1, 2)
-    segments_vy = np.concatenate([points_vy[:-1], points_vy[1:]], axis=1)
-    lc_vy = LineCollection(segments_vy, cmap=cmap, linewidth=2, alpha=0.8, 
-                           linestyle='--', label='vy')
-    lc_vy.set_array(time_norm[1:-1])
-    ax_vel_xy.add_collection(lc_vy)
+    if len(times) > 2:
+        # vx line
+        points_vx = np.array([times[1:], dvx[1:]]).T.reshape(-1, 1, 2)
+        if len(points_vx) > 1:
+            segments_vx = np.concatenate([points_vx[:-1], points_vx[1:]], axis=1)
+            lc_vx = LineCollection(segments_vx, cmap=cmap, linewidth=2, alpha=0.8, label='vx')
+            lc_vx.set_array(time_norm[1:-1])
+            ax_vel_xy.add_collection(lc_vx)
+        
+        # vy line
+        points_vy = np.array([times[1:], dvy[1:]]).T.reshape(-1, 1, 2)
+        if len(points_vy) > 1:
+            segments_vy = np.concatenate([points_vy[:-1], points_vy[1:]], axis=1)
+            lc_vy = LineCollection(segments_vy, cmap=cmap, linewidth=2, alpha=0.8, 
+                                   linestyle='--', label='vy')
+            lc_vy.set_array(time_norm[1:-1])
+            ax_vel_xy.add_collection(lc_vy)
     
     # Set axis limits for XY velocities
     vel_xy_values = np.concatenate([dvx[1:].dropna(), dvy[1:].dropna()])
@@ -332,7 +367,10 @@ def plot_experiment(experiment_dir):
         vel_xy_min, vel_xy_max = vel_xy_values.min(), vel_xy_values.max()
         vel_xy_range = vel_xy_max - vel_xy_min
         ax_vel_xy.set_xlim(times.min(), times.max())
-        ax_vel_xy.set_ylim(vel_xy_min - 0.1 * vel_xy_range, vel_xy_max + 0.1 * vel_xy_range)
+        if vel_xy_range > 0:
+            ax_vel_xy.set_ylim(vel_xy_min - 0.1 * vel_xy_range, vel_xy_max + 0.1 * vel_xy_range)
+        else:
+            ax_vel_xy.set_ylim(vel_xy_min - 0.1, vel_xy_max + 0.1)
     
     # Add vertical line for current time
     vel_xy_vline = ax_vel_xy.axvline(x=times[0], color='red', linestyle='--', linewidth=2, alpha=0.7)
@@ -347,24 +385,58 @@ def plot_experiment(experiment_dir):
     
     # ==================== L1 DISTANCE METRIC PLOT ====================
     
-    if 'l1_distance_to_goal' in df.columns:
-        l1_dist = df['l1_distance_to_goal'].values
+    # Handle L1 distance: if multiple objects, show min/max/avg
+    if 'box_l1_distance' in df.columns and 'obj_index' in df.columns:
+        # New format: calculate aggregate metrics per timestamp
+        l1_by_time = df.groupby('timestamp')['box_l1_distance'].agg(['min', 'max', 'mean']).reset_index()
+        l1_min = l1_by_time['min'].values
+        l1_max = l1_by_time['max'].values
+        l1_mean = l1_by_time['mean'].values
+        l1_times = l1_by_time['timestamp'].values
+        
+        # Plot min, max, and mean
+        if len(l1_times) > 1:
+            # Min distance (primary metric)
+            points_min = np.array([l1_times, l1_min]).T.reshape(-1, 1, 2)
+            segments_min = np.concatenate([points_min[:-1], points_min[1:]], axis=1)
+            lc_min = LineCollection(segments_min, cmap=cmap, linewidth=2.5, alpha=0.9, label='Min')
+            lc_min.set_array(create_gradient_colormap(l1_times)[:-1])
+            ax_metric.add_collection(lc_min)
+            
+            # Mean distance
+            points_mean = np.array([l1_times, l1_mean]).T.reshape(-1, 1, 2)
+            segments_mean = np.concatenate([points_mean[:-1], points_mean[1:]], axis=1)
+            lc_mean = LineCollection(segments_mean, cmap=cmap, linewidth=2.0, 
+                                    alpha=0.7, linestyle='--', label='Mean')
+            lc_mean.set_array(create_gradient_colormap(l1_times)[:-1])
+            ax_metric.add_collection(lc_mean)
+            
+            # Max distance
+            points_max = np.array([l1_times, l1_max]).T.reshape(-1, 1, 2)
+            segments_max = np.concatenate([points_max[:-1], points_max[1:]], axis=1)
+            lc_max = LineCollection(segments_max, cmap=cmap, linewidth=1.5, 
+                                    alpha=0.5, linestyle=':', label='Max')
+            lc_max.set_array(create_gradient_colormap(l1_times)[:-1])
+            ax_metric.add_collection(lc_max)
+        
+        l1_dist = l1_min  # Use min for primary display
+        metric_times = l1_times
+    elif 'l1_distance_to_goal' in df_robot.columns:
+        # Old format: single L1 distance column
+        l1_dist = df_robot['l1_distance_to_goal'].values
+        metric_times = times
     else:
+        # Calculate from robot position
         goal = config.get('goal_position', [0, 0])
         l1_dist = np.abs(robot_x - goal[0]) + np.abs(robot_y - goal[1])
+        metric_times = times
     
-    points_metric = np.array([times, l1_dist]).T.reshape(-1, 1, 2)
-    segments_metric = np.concatenate([points_metric[:-1], points_metric[1:]], axis=1)
-    
-    lc_metric = LineCollection(segments_metric, cmap=cmap, linewidth=2.5)
-    lc_metric.set_array(time_norm[:-1])
-    ax_metric.add_collection(lc_metric)
-    
-    ax_metric.set_xlim(times.min(), times.max())
-    ax_metric.set_ylim(0, l1_dist.max() * 1.1)
+    ax_metric.set_xlim(metric_times.min(), metric_times.max())
+    if len(l1_dist) > 0:
+        ax_metric.set_ylim(0, l1_dist.max() * 1.1)
     
     # Add vertical line for current time
-    metric_vline = ax_metric.axvline(x=times[0], color='red', linestyle='--', linewidth=2, alpha=0.7)
+    metric_vline = ax_metric.axvline(x=metric_times[0], color='red', linestyle='--', linewidth=2, alpha=0.7)
     
     ax_metric.axhline(y=1.0, color='green', linestyle='--', linewidth=1.5, 
                      alpha=0.5, label='Success (1m)')
@@ -377,10 +449,19 @@ def plot_experiment(experiment_dir):
     ax_metric.tick_params(labelsize=9)
     
     # Add text annotation for current distance (more compact)
-    metric_text = ax_metric.text(0.02, 0.98, f'Now: {l1_dist[0]:.2f}m', 
-                  transform=ax_metric.transAxes, fontsize=9,
-                  verticalalignment='top', bbox=dict(boxstyle='round,pad=0.4', 
-                  facecolor='wheat', alpha=0.8))
+    if len(l1_dist) > 0:
+        metric_text = ax_metric.text(0.02, 0.98, f'Now: {l1_dist[0]:.2f}m', 
+                      transform=ax_metric.transAxes, fontsize=9,
+                      verticalalignment='top', bbox=dict(boxstyle='round,pad=0.4', 
+                      facecolor='wheat', alpha=0.8))
+    else:
+        metric_text = ax_metric.text(0.02, 0.98, 'Now: N/A', 
+                      transform=ax_metric.transAxes, fontsize=9,
+                      verticalalignment='top', bbox=dict(boxstyle='round,pad=0.4', 
+                      facecolor='wheat', alpha=0.8))
+    
+    # Store variables for slider update function
+    # (metric_times and l1_dist are already defined above)
     
     # ==================== IMAGE VIEWER ====================
     
@@ -436,18 +517,21 @@ def plot_experiment(experiment_dir):
         def update_slider(val):
             current_time = time_slider.val
             
-            # Find closest data point
+            # Find closest data point in unique timestamps
             idx = np.argmin(np.abs(times - current_time))
             
             # Update current position marker on map
-            current_marker.set_data([robot_x[idx]], [robot_y[idx]])
+            if idx < len(robot_x) and idx < len(robot_y):
+                current_marker.set_data([robot_x[idx]], [robot_y[idx]])
             
             # Update vertical lines on plots
             vel_xy_vline.set_xdata([current_time])
             metric_vline.set_xdata([current_time])
             
-            # Update metric text
-            metric_text.set_text(f'Now: {l1_dist[idx]:.2f}m')
+            # Update metric text - find closest in metric_times
+            metric_idx = np.argmin(np.abs(metric_times - current_time))
+            if metric_idx < len(l1_dist):
+                metric_text.set_text(f'Now: {l1_dist[metric_idx]:.2f}m')
             
             # Update camera images
             if has_top and top_img_obj is not None:
