@@ -2406,6 +2406,7 @@ class SpotSimulation:
                 # Always use list format for compatibility (even for single box)
                 boxes_data = []
                 goal_pos_2d = np.array([self.goal_pos[0], self.goal_pos[1]])
+                l1_distance = 0.0  # Initialize l1_distance to avoid UnboundLocalError
                 
                 object_type = self.config.get("object_type", "none")
                 if object_type != "none":
@@ -2524,14 +2525,45 @@ class SpotSimulation:
                         'l1_distance': l1_distance
                     })
                 
-                # Get primary l1_distance for task completion check (use first box or robot distance)
-                primary_l1_distance = boxes_data[0]['l1_distance'] if len(boxes_data) > 0 else l1_distance
+                # Initialize l1_distance if not already set (shouldn't happen, but safety check)
+                if 'l1_distance' not in locals():
+                    l1_distance = 0.0
                 
-                # Check if task is complete (distance < 1m)
+                # Calculate aggregate metrics from all boxes
+                # Ensure l1_distance is always set for logging
+                if len(boxes_data) > 0:
+                    all_box_distances = [box_data['l1_distance'] for box_data in boxes_data if box_data['l1_distance'] > 0]
+                    if len(all_box_distances) > 0:
+                        min_box_distance = min(all_box_distances)  # Closest box to goal
+                        max_box_distance = max(all_box_distances)  # Farthest box from goal
+                        avg_box_distance = np.mean(all_box_distances)  # Average distance
+                        primary_l1_distance = min_box_distance  # Use minimum for task completion
+                        # Set l1_distance for backward compatibility (use minimum distance)
+                        l1_distance = min_box_distance
+                    else:
+                        # No valid box distances
+                        primary_l1_distance = float('inf')
+                        min_box_distance = max_box_distance = avg_box_distance = 0.0
+                        l1_distance = 0.0
+                else:
+                    # No boxes, use robot distance (for gate/no object scenarios)
+                    # l1_distance should already be set from gate/no object code above
+                    # If it's still 0.0 and we have no object, calculate robot distance
+                    if l1_distance == 0.0 and object_type == "none":
+                        robot_pos_2d = robot_pos[:2]
+                        l1_distance = np.sum(np.abs(robot_pos_2d - goal_pos_2d))
+                    primary_l1_distance = l1_distance
+                    min_box_distance = max_box_distance = avg_box_distance = l1_distance
+                
+                # Check if task is complete (closest box distance < 1m)
                 if self.task_in_progress and primary_l1_distance < 1.0:
                     self.task_in_progress = False
                     self._change_goal_color_to_green()
-                    self.logger.info(f"Task completed! Distance to goal: {primary_l1_distance:.3f}m < 1.0m")
+                    if len(boxes_data) > 1:
+                        self.logger.info(f"Task completed! Closest box distance to goal: {primary_l1_distance:.3f}m < 1.0m")
+                        self.logger.info(f"  All box distances: min={min_box_distance:.3f}m, max={max_box_distance:.3f}m, avg={avg_box_distance:.3f}m")
+                    else:
+                        self.logger.info(f"Task completed! Distance to goal: {primary_l1_distance:.3f}m < 1.0m")
                     self.logger.info("Logging stopped")
                 
                 # Save experiment data (CSV and camera images) only after first command and while task is in progress
@@ -2543,9 +2575,11 @@ class SpotSimulation:
                         self.logger.info("Experiment data saving started")
                     
                     # For backward compatibility, also provide single object format
+                    # Use closest box (minimum distance) for backward compatibility column
                     object_pos = boxes_data[0]['pos'] if len(boxes_data) > 0 else np.array([0.0, 0.0, 0.0])
                     object_quat = boxes_data[0]['quat'] if len(boxes_data) > 0 else np.array([1.0, 0.0, 0.0, 0.0])
-                    l1_distance = boxes_data[0]['l1_distance'] if len(boxes_data) > 0 else 0.0
+                    # Use minimum distance (closest box) for backward compatibility
+                    l1_distance = min_box_distance if len(boxes_data) > 0 else 0.0
                     
                     self._save_experiment_data(robot_pos, robot_quat, boxes_data, object_pos, object_quat, l1_distance)
                 
@@ -2556,12 +2590,20 @@ class SpotSimulation:
                     f"Cmd vel: [vx={cmd_vel[0]:.2f}, vy={cmd_vel[1]:.2f}, yaw={cmd_vel[2]:.2f}]"
                 )
                 
-                # Log at INFO level: L1 distance to goal
+                # Log at INFO level: L1 distance to goal (show metrics from all boxes)
                 if object_type != "none":
                     if object_type == "gate":
                         self.logger.info(f"Robot <-> Goal L1 distance: {l1_distance:.2f} m")
                     else:
-                        self.logger.info(f"{object_type.capitalize()} <-> Goal L1 distance: {l1_distance:.2f} m")
+                        # Show metrics from all boxes
+                        if len(boxes_data) > 1:
+                            all_distances = [box_data['l1_distance'] for box_data in boxes_data]
+                            self.logger.info(f"Boxes <-> Goal L1 distances: {[f'{d:.2f}' for d in all_distances]} m")
+                            self.logger.info(f"  Aggregate: min={min_box_distance:.2f}m, max={max_box_distance:.2f}m, avg={avg_box_distance:.2f}m")
+                        else:
+                            # Single box - use its distance
+                            single_box_distance = boxes_data[0]['l1_distance'] if len(boxes_data) > 0 else 0.0
+                            self.logger.info(f"{object_type.capitalize()} <-> Goal L1 distance: {single_box_distance:.2f} m")
                 else:
                     self.logger.info(f"Robot <-> Goal L1 distance: {l1_distance:.2f} m")
         
